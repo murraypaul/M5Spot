@@ -1,27 +1,22 @@
-/*
-pio platform update
-pio init --ide clion --board m5stack-core-esp32
-*/
+// Required:
+// - https://github.com/me-no-dev/AsyncTCP
+// - https://github.com/me-no-dev/ESPAsyncWebServer
 
-#include <M5Stack.h>
 #include <Arduino.h>
 #include <WiFiMulti.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
-#include <SPIFFS.h>
-#include <EEPROM.h>
-#include <ArduinoOTA.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <base64.h>
+#include <Preferences.h>
 #include "main.h"
 #include "config.h"
 
-#ifdef WITH_APDS9960
-#include <SparkFun_APDS9960.h>
-SparkFun_APDS9960 apds = SparkFun_APDS9960();
-volatile int isr_flag = 0;
-#endif
+#include <M5EPD.h>
+
+#include "DisplayManager.h"
+#include "TrackDetails.h"
 
 // MISC GLOBALS
 
@@ -39,13 +34,14 @@ uint32_t last_curplay_millis = 0;
 uint32_t next_curplay_millis = 0;
 
 bool getting_token = false;
-bool ota_in_progress = false;
-bool sptf_is_playing = true;
 bool send_events = true;
+static bool sptf_is_playing = true;
 
-uint16_t sptf_green = M5.Lcd.color565(30, 215, 96);
+SptfActions sptfAction = Idle;
 
-SptfActions sptfAction = Iddle;
+Preferences preferences;
+const char* Preferences_App = "M5Spot";
+const char* Preferences_Key = "Sptfrftok";
 
 
 /**
@@ -56,56 +52,28 @@ void setup() {
     //-----------------------------------------------
     // Initialize M5Stack
     //-----------------------------------------------
-    M5.begin();
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setTextColor(sptf_green);
+    DisplayManager::Init();
 
     char title[17];
     snprintf(title, sizeof(title), "M5Spot v%s", M5S_VERSION);
-
-#ifdef WITH_APDS9960
-    //-----------------------------------------------
-    // Initialize APDS-9960
-    //-----------------------------------------------
-
-    pinMode(APDS9960_INT_PIN, INPUT);
-
-    if (apds.init()) {
-        M5S_DBG("APDS-9960 initialization complete\n");
-        if (apds.enableGestureSensor(true)) {
-            attachInterrupt(digitalPinToInterrupt(APDS9960_INT_PIN), interruptRoutine, FALLING);
-            M5S_DBG("Gesture sensor is now running\n");
-        } else {
-            M5S_DBG("Something went wrong during gesture sensor init!\n");
-        }
-    } else {
-        M5S_DBG("Something went wrong during APDS-9960 init!\n");
-    }
-#endif
 
     //-----------------------------------------------
     // Initialize SPIFFS
     //-----------------------------------------------
 
-    if (!SPIFFS.begin()) {
-        m5sEpitaph("Unable to begin SPIFFS");
-    }
+//    if (!SPIFFS.begin()) {
+//        m5sEpitaph("Unable to begin SPIFFS");
+//    }
 
     //-----------------------------------------------
     // Initialize Wifi
     //-----------------------------------------------
 
-    M5.Lcd.drawJpgFile(SPIFFS, "/logo128.jpg", 96, 50, 128, 128);
+//    Canvas.drawJpgFile(SPIFFS, "/logo128.jpg", 96, 50, 128, 128);
 
-    M5.Lcd.setFreeFont(&FreeSansBoldOblique12pt7b);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(TC_DATUM);
-    M5.Lcd.drawString(title, 160, 10);
+    DisplayManager::drawString(&FreeSansBoldOblique12pt7b,1,TC_DATUM,title, 160, 10);
 
-    M5.Lcd.setFreeFont(&FreeSans9pt7b);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(BC_DATUM);
-    M5.Lcd.drawString("Connecting to WiFi...", 160, 215);
+    DisplayManager::drawString(&FreeSans9pt7b,1,BC_DATUM,"Connecting to WiFi...", 160, 215);
 
     WiFi.mode(WIFI_STA);
     for (auto i : AP_LIST) {
@@ -121,96 +89,68 @@ void setup() {
         m5sEpitaph("Unable to connect to WiFi");
     }
 
-    WiFi.setHostname("M5Spot");
+    WiFi.setHostname("m5spot");
 
-    //-----------------------------------------------
-    // Initialize OTA handlers
-    //-----------------------------------------------
+    if(!MDNS.begin("m5spot")) {
+         Serial.println("Error starting mDNS");
+         return;
+    }
 
-    ArduinoOTA.onStart([]() {
-        ota_in_progress = true;
-        M5.Lcd.fillScreen(BLACK);
-        M5.Lcd.setTextColor(WHITE);
-        M5.Lcd.setFreeFont(&FreeSans9pt7b);
-        M5.Lcd.setTextSize(1);
-        M5.Lcd.setTextDatum(CC_DATUM);
-        M5.Lcd.drawString("OTA update", 160, 120, 2);
-        progressBar(140, 0);
-    });
-
-    ArduinoOTA.onProgress([](uint32_t progress, uint32_t total) {
-        progressBar(140, progress / (total / 100));
-    });
-
-    ArduinoOTA.onEnd([]() {
-        M5.Lcd.fillScreen(BLACK);
-        M5.Lcd.drawString("OTA update done", 160, 120, 2);
-        ota_in_progress = false;
-    });
-
-    ArduinoOTA.onError([](ota_error_t error) {
-        M5.Lcd.fillScreen(BLACK);
-        M5.Lcd.setTextDatum(CC_DATUM);
-        M5.Lcd.drawString("OTA update error. Please retry...", 160, 120, 2);
-    });
-
-    ArduinoOTA.setHostname("M5Spot");
-    ArduinoOTA.begin();
     MDNS.addService("http", "tcp", 80);
 
     //-----------------------------------------------
     // Display some infos
     //-----------------------------------------------
 
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.drawJpgFile(SPIFFS, "/logo128d.jpg", 96, 50, 128, 128);
+//    Canvas.fillScreen(BLACK);
+//    Canvas.drawJpgFile(SPIFFS, "/logo128d.jpg", 96, 50, 128, 128);
 
-    M5.Lcd.setFreeFont(&FreeSansBoldOblique12pt7b);
-    M5.Lcd.setTextColor(sptf_green);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(TC_DATUM);
-    M5.Lcd.drawString(title, 160, 10);
+    DisplayManager::drawString(&FreeSansBoldOblique12pt7b,1,TC_DATUM,title, 160, 10);
 
-    M5.Lcd.setFreeFont(&FreeMono9pt7b);
-    M5.Lcd.setTextColor(WHITE);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setCursor(0, 75);
-    M5.Lcd.printf(" SSID:      %s\n", WiFi.SSID().c_str());
-    M5.Lcd.printf(" IP:        %s\n", WiFi.localIP().toString().c_str());
-    M5.Lcd.printf(" STA MAC:   %s\n", WiFi.macAddress().c_str());
-    M5.Lcd.printf(" AP MAC:    %s\n", WiFi.softAPmacAddress().c_str());
-    M5.Lcd.printf(" Chip size: %s\n", prettyBytes(ESP.getFlashChipSize()).c_str());
-    M5.Lcd.printf(" Free heap: %s\n", prettyBytes(ESP.getFreeHeap()).c_str());
+    DisplayManager::GetCanvas().setFreeFont(&FreeMono9pt7b);
+//    Canvas.setTextColor(WHITE);
+    DisplayManager::GetCanvas().setTextSize(1);
+    DisplayManager::GetCanvas().setCursor(0, 75);
+    DisplayManager::GetCanvas().printf(" SSID:      %s\n", WiFi.SSID().c_str());
+    DisplayManager::GetCanvas().printf(" IP:        %s\n", WiFi.localIP().toString().c_str());
+    DisplayManager::GetCanvas().printf(" STA MAC:   %s\n", WiFi.macAddress().c_str());
+    DisplayManager::GetCanvas().printf(" AP MAC:    %s\n", WiFi.softAPmacAddress().c_str());
+    DisplayManager::GetCanvas().printf(" Chip size: %s\n", prettyBytes(ESP.getFlashChipSize()).c_str());
+    DisplayManager::GetCanvas().printf(" Free heap: %s\n", prettyBytes(ESP.getFreeHeap()).c_str());
 
-    M5.Lcd.setFreeFont(&FreeSans9pt7b);
-    M5.Lcd.setTextColor(sptf_green);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(BC_DATUM);
-    M5.Lcd.drawString("Press any button to continue...", 160, 230);
+//    Canvas.setFreeFont(&FreeSans9pt7b);
+//    Canvas.setTextColor(sptf_green);
+//    Canvas.setTextSize(1);
+//    Canvas.setTextDatum(BC_DATUM);
+//    Canvas.drawString("Press any button to continue...", 160, 230);
 
-    uint32_t pause = millis();
-    while (true) {
-        m5.update();
-        ArduinoOTA.handle();
-        if (m5.BtnA.wasPressed() || m5.BtnB.wasPressed() || m5.BtnC.wasPressed() || (millis() - pause > 20000)) {
-            break;
-        }
-        yield();
-    }
+    DisplayManager::GetCanvas().pushCanvas(0, 0, UPDATE_MODE_GC16);
+    
+//    Serial.println("Init done");
+    
+//    uint32_t pause = millis();
+//    while (true) {
+//        M5.update();
+//        if (M5.BtnL.wasPressed() || M5.BtnR.wasPressed() || M5.BtnR.wasPressed() || (millis() - pause > 20000)) {
+//            break;
+//        }
+//        yield();
+//    }
 
     //-----------------------------------------------
     // Initialize HTTP server handlers
     //-----------------------------------------------
     events.onConnect([](AsyncEventSourceClient *client) {
-        M5S_DBG("\n> [%d] events.onConnect\n", micros());
+        log_i("\n> [%d] events.onConnect\n", micros());
     });
     server.addHandler(&events);
 
-    server.serveStatic("/favicon.ico", SPIFFS, "/favicon.ico");
+//    server.serveStatic("/favicon.ico", SPIFFS, "/favicon.ico");
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        Serial.println("/");
         uint32_t ts = micros();
-        M5S_DBG("\n> [%d] server.on /\n", ts);
+        log_i("\n> [%d] server.on /\n", ts);
         if (access_token == "" && !getting_token) {
             getting_token = true;
             char auth_url[300] = "";
@@ -222,14 +162,15 @@ void setup() {
                      "&client_id=%s",
                      SPTF_CLIENT_ID
             );
-            M5S_DBG("  [%d] Redirect to: %s\n", ts, auth_url);
+            log_i("  [%d] Redirect to: %s\n", ts, auth_url);
             request->redirect(auth_url);
         } else {
-            request->send(SPIFFS, "/index.html");
+//            request->send(SPIFFS, "/index.html");
         }
     });
 
     server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
+        Serial.println("/callback");
         auth_code = "";
         uint8_t paramsNr = request->params();
         for (uint8_t i = 0; i < paramsNr; i++) {
@@ -270,7 +211,7 @@ void setup() {
         access_token = "";
         refresh_token = "";
         deleteRefreshToken();
-        sptfAction = Iddle;
+        sptfAction = Idle;
         request->send(200, "text/plain", "Tokens deleted, M5Spot will restart");
         uint32_t start = millis();
         while (true) {
@@ -311,27 +252,22 @@ void setup() {
     //-----------------------------------------------
     // End of setup
     //-----------------------------------------------
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.drawJpgFile(SPIFFS, "/logo128.jpg", 96, 50, 128, 128);
+//    Canvas.fillScreen(BLACK);
+//    Canvas.drawJpgFile(SPIFFS, "/logo128.jpg", 96, 50, 128, 128);
 
-    M5.Lcd.setFreeFont(&FreeSansBoldOblique12pt7b);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(TC_DATUM);
-    M5.Lcd.drawString(title, 160, 10);
+    DisplayManager::drawString(&FreeSansBoldOblique12pt7b, 1, TC_DATUM,title, 160, 10);
 
-    M5.Lcd.setTextDatum(BC_DATUM);
     if (refresh_token == "") {
-        M5.Lcd.setFreeFont(&FreeSans9pt7b);
-        M5.Lcd.drawString("Point your browser to", 160, 205);
-
-        M5.Lcd.setFreeFont(&FreeSans12pt7b);
-        M5.Lcd.drawString("http://m5spot.local", 160, 235);
+        DisplayManager::drawString(&FreeSans9pt7b, 1, BC_DATUM, "Point your browser to", 160, 205);
+        DisplayManager::drawString(&FreeSans12pt7b, 1, BC_DATUM, "http://m5spot.local", 160, 235);
     } else {
-        M5.Lcd.setFreeFont(&FreeSans9pt7b);
-        M5.Lcd.drawString("Ready...", 160, 230);
+//        Canvas.setFreeFont(&FreeSans9pt7b);
+//        Canvas.drawString("Ready...", 160, 230);
 
+        DisplayManager::clearScreen();
         sptfAction = CurrentlyPlaying;
     }
+    DisplayManager::refreshScreen();
 }
 
 /**
@@ -340,13 +276,6 @@ void setup() {
 void loop() {
 
     uint32_t cur_millis = millis();
-
-
-    // OTA handler
-    ArduinoOTA.handle();
-    if (ota_in_progress) {
-        return;
-    }
 
     // Refreh Spotify access token either on M5Spot startup or at token expiration delay
     // The number of requests is limited to 1 every 5 seconds
@@ -359,33 +288,26 @@ void loop() {
         }
     }
 
-#ifdef WITH_APDS9960
-        // Gesture event handler
-        if (isr_flag == 1) {
-            detachInterrupt(digitalPinToInterrupt(APDS9960_INT_PIN));
-            handleGesture();
-            isr_flag = 0;
-            attachInterrupt(digitalPinToInterrupt(APDS9960_INT_PIN), interruptRoutine, FALLING);
-        }
-#endif
-
     // M5Stack handler
-    m5.update();
-    if (m5.BtnA.wasPressed()) {
+    M5.update();
+    if (M5.BtnL.wasPressed()) {
+        log_i("BtnL - Previous");
         sptfAction = Previous;
     }
 
-    if (m5.BtnB.wasPressed()) {
+    if (M5.BtnP.wasPressed()) {
+        log_i("BtnP - Toggle");
         sptfAction = Toggle;
     }
 
-    if (m5.BtnC.wasPressed()) {
+    if (M5.BtnR.wasPressed()) {
+        log_i("BtnR - Next");
         sptfAction = Next;
     }
 
     // Spotify action handler
     switch (sptfAction) {
-        case Iddle:
+        case Idle:
             break;
         case GetToken:
             sptfGetToken(auth_code, gt_authorization_code);
@@ -411,20 +333,6 @@ void loop() {
 
 
 /**
- * Draw a progress bar
- *
- * @param y
- * @param width
- * @param val
- */
-void progressBar(uint8_t y, uint8_t val, uint16_t width, uint16_t height, uint16_t color) {
-    uint8_t x = (M5.Lcd.width() - width) / 2;
-    M5.Lcd.drawRect(x, y, width, height, color);
-    M5.Lcd.fillRect(x, y, width * (((float) val) / 100.0), height, color);
-}
-
-
-/**
  * Send log to browser
  *
  * @param logData
@@ -445,15 +353,14 @@ void eventsSendLog(const char *logData, EventsLogTypes type) {
 void eventsSendInfo(const char *msg, const char *payload) {
     if(!send_events) return;
 
-    DynamicJsonBuffer jsonBuffer(256);
-    JsonObject &json = jsonBuffer.createObject();
+    DynamicJsonDocument json(256);
     json["msg"] = msg;
     if (strlen(payload)) {
         json["payload"] = payload;
     }
 
     String info;
-    json.printTo(info);
+    serializeJson(json,info);
     events.send(info.c_str(), "info");
 }
 
@@ -468,8 +375,7 @@ void eventsSendInfo(const char *msg, const char *payload) {
 void eventsSendError(int code, const char *msg, const char *payload) {
     if(!send_events) return;
 
-    DynamicJsonBuffer jsonBuffer(256);
-    JsonObject &json = jsonBuffer.createObject();
+    DynamicJsonDocument json(256);
     json["code"] = code;
     json["msg"] = msg;
     if (strlen(payload)) {
@@ -477,7 +383,7 @@ void eventsSendError(int code, const char *msg, const char *payload) {
     }
 
     String error;
-    json.printTo(error);
+    serializeJson(json,error);
     events.send(error.c_str(), "error");
 }
 
@@ -506,22 +412,11 @@ String b64Encode(String str) {
  * Write refresh token to EEPROM
  */
 void writeRefreshToken() {
-    M5S_DBG("\n> [%d] writeRefreshToken()\n", micros());
-
-    EEPROM.begin(256);
-
-    String tmpTok;
-    tmpTok.reserve(refresh_token.length() + 6);
-    tmpTok = "rtok:";
-    tmpTok += refresh_token;
-
-    uint16_t i = 0, addr = 0, tt_len = tmpTok.length();
-    for (i = 0; addr < 256 && i < tt_len; i++, addr++) {
-        EEPROM.write(addr, (uint8_t) tmpTok.charAt(i));
-    }
-
-    EEPROM.write(addr, '\0');
-    EEPROM.end();
+  Serial.println("Writing refresh token");
+  Serial.println(refresh_token);
+  preferences.begin(Preferences_App);
+  preferences.putString(Preferences_Key,refresh_token);
+  preferences.end();
 }
 
 
@@ -529,11 +424,11 @@ void writeRefreshToken() {
  * Delete refresh token from EEPROM
  */
 void deleteRefreshToken() {
-    M5S_DBG("\n> [%d] deleteRefreshToken()\n", micros());
-
-    EEPROM.begin(256);
-    EEPROM.write(0, '\0'); // Deleting only the first character is enough to make the key invalid
-    EEPROM.end();
+  Serial.println("Deleting refresh token");
+  preferences.begin(Preferences_App);
+//  if( preferences.isKey(Preferences_Key) )
+    preferences.remove(Preferences_Key);
+  preferences.end();
 }
 
 
@@ -543,112 +438,16 @@ void deleteRefreshToken() {
  * @return String
  */
 String readRefreshToken() {
-    M5S_DBG("\n> [%d] readRefreshToken()\n", micros());
+  Serial.println("Reading refresh token");
+  log_i("\n> [%d] readRefreshToken()\n", micros());
 
-    String tok;
-    tok.reserve(150);
-
-    EEPROM.begin(1024);
-
-    for (int i = 0; i < 5; i++) {
-        tok += String(char(EEPROM.read(i)));
-    }
-
-    if (tok == "rtok:") {
-        tok = "";
-        char c;
-        uint16_t addr = 5;
-        while (addr < 256) {
-            c = char(EEPROM.read(addr++));
-            if (c == '\0') {
-                break;
-            } else {
-                tok += c;
-            }
-            yield();
-        }
-    } else {
-        tok = "";
-    }
-
-    EEPROM.end();
-
-    return tok;
+  String tok;
+  preferences.begin(Preferences_App);
+//  if( preferences.isKey(Preferences_Key) )
+    tok = preferences.getString(Preferences_Key);
+  preferences.end();
+  return tok;
 }
-
-
-/**
- * Display album art
- *
- * @param url
- */
-void sptfDisplayAlbumArt(String url) {
-    uint32_t ts = micros();
-    M5S_DBG("\n> [%d] sptfDisplayAlbumArt(%s)\n", ts, url.c_str());
-
-    HTTPClient http;
-
-    http.begin(url);
-    int httpCode = http.GET();
-
-    if (httpCode > 0) {
-        if (httpCode == HTTP_CODE_OK) {
-
-            const char filename[] = "/albart.jpg";
-
-            SD.remove(filename);
-
-            File file = SD.open(filename, FILE_APPEND);
-            if (!file) {
-                M5S_DBG("  [%d] File open failed\n", ts);
-                eventsSendError(500, "File open failed");
-                http.end();
-                return;
-            }
-
-            WiFiClient *stream = http.getStreamPtr();
-            int jpgSize = http.getSize();
-            if (jpgSize < 0) {
-                M5S_DBG("  [%d] Unable to get JPEG size\n", ts);
-                eventsSendError(500, "Unable to get JPEG size");
-                http.end();
-                return;
-            }
-            uint16_t buffSize = 1024;
-            uint8_t buff[buffSize] = {0};
-
-            while (http.connected() && jpgSize > 0) {
-                int availableSize = stream->available();
-                if (availableSize > 0) {
-
-                    // Read data from stream into buffer
-                    int B = stream->readBytes(buff, (size_t) min(availableSize, buffSize));
-
-                    // Write buffer to file
-                    file.write(buff, (size_t) B);
-
-                    jpgSize -= B;
-                }
-                delay(10);
-            }
-            file.close();
-
-            // Display album art
-            M5.Lcd.fillScreen(WHITE);
-            M5.Lcd.drawJpgFile(SD, filename, 10, 30);
-
-        } else {
-            M5S_DBG("  [%d] Unable to get album art: %s\n", ts, http.errorToString(httpCode).c_str());
-            eventsSendError(httpCode, "Unable to get album art", http.errorToString(httpCode).c_str());
-        }
-    } else {
-        M5S_DBG("  [%d] Unable to get album art: %s\n", ts, http.errorToString(httpCode).c_str());
-        eventsSendError(httpCode, "Unable to get album art", http.errorToString(httpCode).c_str());
-    }
-
-    http.end();
-}
-
 
 /**
  * HTTP request
@@ -661,7 +460,7 @@ void sptfDisplayAlbumArt(String url) {
  */
 HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers, const char *content) {
     uint32_t ts = micros();
-    M5S_DBG("\n> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
+    log_v("\n> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
 
     WiFiClientSecure client;
 
@@ -673,7 +472,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
      * Send HTTP request
      */
 
-    M5S_DBG("  [%d] Request:\n%s%s\n", ts, headers, content);
+    log_v("  [%d] Request:\n%s%s\n", ts, headers, content);
     eventsSendLog(">>>> REQUEST");
     eventsSendLog(headers);
     eventsSendLog(content);
@@ -696,7 +495,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
         yield();
     }
 
-    M5S_DBG("  [%d] Response:\n", ts);
+    log_v("  [%d] Response:\n", ts);
     eventsSendLog("<<<< RESPONSE");
 
     HTTP_response_t response = {0, ""};
@@ -720,15 +519,15 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
                 // Read response headers
                 readSize = client.readBytesUntil('\n', buff, buffSize);
                 buff[readSize - 1] = '\0'; // replace /r by \0
-                M5S_DBG("%s\n", buff);
+//                log_i("%s\n", buff);
                 eventsSendLog(buff);
-                if (startsWith(buff, "HTTP/1.")) {
+                if (strStartsWith(buff, "HTTP/1.")) {
                     buff[12] = '\0';
                     response.httpCode = atoi(&buff[9]);
                     if (response.httpCode == 204) {
                         break;
                     }
-                } else if (startsWith(buff, "Content-Length:")) {
+                } else if (strStartsWith(buff, "Content-Length:")) {
                     contentLength = atoi(&buff[16]);
                     if (contentLength == 0) {
                         break;
@@ -737,14 +536,14 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
                 } else if (buff[0] == '\0') {
                     // End of headers
                     EOH = true;
-                    M5S_DBG("<EOH>\n");
+//                    log_i("<EOH>\n");
                     eventsSendLog("");
                 }
             } else {
                 // Read response content
                 readSize = client.readBytes(buff, min(buffSize - 1, availableSize));
                 buff[readSize] = '\0';
-                M5S_DBG(buff);
+//                log_i("%s",buff);
                 eventsSendLog(buff, log_raw);
                 response.payload += buff;
                 totatlReadSize += readSize;
@@ -762,7 +561,20 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
     }
     client.stop();
 
-    M5S_DBG("\n< [%d] HEAP: %d\n", ts, ESP.getFreeHeap());
+    if( response.payload.indexOf("Invalid refresh token") != -1 )
+    {
+        log_i("  [%d] Invalid refresh token, clearing and restarting\n", ts);
+        access_token = "";
+        refresh_token = "";
+        deleteRefreshToken();
+        sptfAction = Idle;
+        ESP.restart();
+        while (true) {
+            yield();
+        }
+    }
+
+    log_i("\n< [%d] HEAP: %d\n", ts, ESP.getFreeHeap());
 
     return response;
 }
@@ -777,7 +589,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
  */
 HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const char *content) {
     uint32_t ts = micros();
-    M5S_DBG("\n> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
+    log_i("\n> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
 
     char headers[512];
     snprintf(headers, sizeof(headers),
@@ -801,7 +613,7 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const c
  */
 void sptfGetToken(const String &code, GrantTypes grant_type) {
     uint32_t ts = micros();
-    M5S_DBG("\n> [%d] sptfGetToken(%s, %s)\n", ts, code.c_str(), grant_type == gt_authorization_code ? "authorization" : "refresh");
+    log_i("\n> [%d] sptfGetToken(%s, %s)\n", ts, code.c_str(), grant_type == gt_authorization_code ? "authorization" : "refresh");
 
     bool success = false;
 
@@ -839,11 +651,9 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
 
     if (response.httpCode == 200) {
 
-        DynamicJsonBuffer jsonInBuffer(572);
-        //StaticJsonBuffer<572> jsonInBuffer;
-        JsonObject &json = jsonInBuffer.parseObject(response.payload);
-
-        if (json.success()) {
+        DynamicJsonDocument json(572);
+        DeserializationError error = deserializeJson(json, response.payload);
+        if (!error) {
             access_token = json["access_token"].as<String>();
             if (access_token != "") {
                 token_lifetime_ms = (json["expires_in"].as<uint32_t>() - 300) * 1000;
@@ -855,11 +665,26 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
                 }
             }
         } else {
-            M5S_DBG("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
-            eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
+            if( response.payload.indexOf("Invalid refresh token") != -1 )
+            {
+                log_i("  [%d] Invalid refresh token, clearing and restarting\n", ts);
+                access_token = "";
+                refresh_token = "";
+                deleteRefreshToken();
+                sptfAction = Idle;
+                ESP.restart();
+                while (true) {
+                    yield();
+                }
+            }
+            else
+            {
+                log_i("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
+                eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
+            }
         }
     } else {
-        M5S_DBG("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+        log_i("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
         eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
     }
 
@@ -876,7 +701,7 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
  */
 void sptfCurrentlyPlaying() {
     uint32_t ts = micros();
-    M5S_DBG("\n> [%d] sptfCurrentlyPlaying()\n", ts);
+    log_i("\n> [%d] sptfCurrentlyPlaying()\n", ts);
 
     last_curplay_millis = millis();
     next_curplay_millis = 0;
@@ -884,83 +709,36 @@ void sptfCurrentlyPlaying() {
     HTTP_response_t response = sptfApiRequest("GET", "/currently-playing");
 
     if (response.httpCode == 200) {
-
-        DynamicJsonBuffer jsonBuffer(5120);
-
-        JsonObject &json = jsonBuffer.parse(response.payload);
-
-        if (json.success()) {
-            sptf_is_playing = json["is_playing"];
-            uint32_t progress_ms = json["progress_ms"];
-            uint32_t duration_ms = json["item"]["duration_ms"];
-
-            // Check if current song is about to end
-            if (sptf_is_playing) {
-                uint32_t remaining_ms = duration_ms - progress_ms;
-                if (remaining_ms < SPTF_POLLING_DELAY) {
-                    // Refresh at the end of current song,
-                    // without considering remaining polling delay
-                    next_curplay_millis = millis() + remaining_ms + 200;
-                }
+        TrackDetails track = TrackDetails::PopulateFromCurrentlyPlaying(response);
+        sptf_is_playing = track.IsPlaying;
+        // Check if current song is about to end
+        if (sptf_is_playing) {
+            uint32_t remaining_ms = track.DurationMS - track.ProgressMS;
+            if (remaining_ms < SPTF_POLLING_DELAY && remaining_ms > 0) {
+                // Refresh at the end of current song,
+                // without considering remaining polling delay
+                next_curplay_millis = millis() + remaining_ms + 200;
             }
-
-            // Get song ID
-            const char *id = json["item"]["id"];
-            static char previousId[32] = {0};
-
-            // If song has changed, refresh display
-            if (strcmp(id, previousId) != 0) {
-                strncpy(previousId, id, sizeof(previousId));
-
-                // Display album art
-                sptfDisplayAlbumArt(json["item"]["album"]["images"][1]["url"]);
-
-                // Display song name
-                M5.Lcd.fillRect(0, 0, 320, 30, 0xffffff);
-                M5.Lcd.setTextColor(BLACK);
-                M5.Lcd.setTextFont(2);
-                M5.Lcd.setTextSize(1);
-                M5.Lcd.setTextDatum(TC_DATUM);
-                M5.Lcd.drawString(json["item"]["name"].as<String>(), 160, 2);
-
-                // Display artists names
-                JsonArray &arr = json["item"]["artists"];
-                String artists;
-                artists.reserve(150);
-                bool first = true;
-                for (auto &a : arr) {
-                    if (first) {
-                        artists += a["name"].as<String>();
-                        first = false;
-                    } else {
-                        artists += ", ";
-                        artists += a["name"].as<String>();
-                    }
-                }
-                M5.Lcd.setTextFont(1);
-                M5.Lcd.setTextSize(1);
-                M5.Lcd.setTextDatum(BC_DATUM);
-                M5.Lcd.drawString(artists, 160, 28);
-
-                // Display progress bar background
-                M5.Lcd.fillRect(0, 235, 320, 5, WHITE);
-
-            }
-
-            M5.Lcd.fillRect(0, 235, ceil((float) 320 * ((float) progress_ms / duration_ms)), 5, sptf_green);
-
-        } else {
-            M5S_DBG("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
-            eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
         }
+        static String previousId;
+
+        // If song has changed, refresh display
+        if (track.ID != previousId) 
+        {
+            previousId = track.ID;
+
+            DisplayManager::NewTrack(track);
+        }
+        if( track.DurationMS > 0 )
+            DisplayManager::drawProgressBar( (float) track.ProgressMS / track.DurationMS);
     } else if (response.httpCode == 204) {
         // No content
     } else {
-        M5S_DBG("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+        log_i("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
         eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
     }
 
-    M5S_DBG("< [%d] HEAP: %d\n", ts, ESP.getFreeHeap());
+    log_i("< [%d] HEAP: %d\n", ts, ESP.getFreeHeap());
 }
 
 /**
@@ -1005,65 +783,6 @@ void sptfToggle() {
     sptfAction = CurrentlyPlaying;
 };
 
-
-#ifdef WITH_APDS9960
-/**
- * Interrupt routine
- */
-void IRAM_ATTR interruptRoutine() {
-    isr_flag = 1;
-}
-
-/**
- * Gesture handler
- */
-void handleGesture() {
-
-    HTTP_response_t response;
-
-    if (apds.isGestureAvailable()) {
-        switch (apds.readGesture()) {
-            case DIR_UP:
-                Serial.println("> Gesture UP");
-                response = sptfApiRequest("PUT", sptf_is_playing ? "/pause" : "/play");
-                if (response.httpCode == 204) {
-                    sptf_is_playing = !sptf_is_playing;
-                }
-                break;
-            case DIR_DOWN:
-                Serial.println("> Gesture DOWN");
-                response = sptfApiRequest("PUT", sptf_is_playing ? "/pause" : "/play");
-                if (response.httpCode == 204) {
-                    sptf_is_playing = !sptf_is_playing;
-                }
-                break;
-            case DIR_LEFT:
-                Serial.println("> Gesture LEFT");
-                response = sptfApiRequest("POST", "/previous");
-                if (response.httpCode == 204) {
-                    next_curplay_millis = millis() + 200;
-                }
-                break;
-            case DIR_RIGHT:
-                Serial.println("> Gesture RIGHT");
-                response = sptfApiRequest("POST", "/next");
-                if (response.httpCode == 204) {
-                    next_curplay_millis = millis() + 200;
-                }
-                break;
-            case DIR_NEAR:
-                Serial.println("> Gesture NEAR");
-                break;
-            case DIR_FAR:
-                Serial.println("> Gesture FAR");
-                break;
-            default:
-                Serial.println("> Gesture NONE");
-        }
-    }
-}
-#endif
-
 /**
  * Display bytes in a pretty format
  *
@@ -1093,14 +812,6 @@ String prettyBytes(uint32_t bytes) {
  * @param errMsg
  */
 void m5sEpitaph(const char *errMsg) {
-    M5.Lcd.setFreeFont(&FreeSans12pt7b);
-    M5.Lcd.setTextColor(WHITE);
-    M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(CC_DATUM);
-    M5.Lcd.fillScreen(RED);
-    M5.Lcd.drawString(errMsg, 160, 120);
-    while (true) {
-        ArduinoOTA.handle();
-        yield();
-    }
+    DisplayManager::drawString(&FreeSans12pt7b, 1, CC_DATUM, errMsg, 160, 120);
+    DisplayManager::refreshScreen(UPDATE_MODE_GC16);
 }

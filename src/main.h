@@ -1,16 +1,35 @@
 #ifndef M5SPOT_MAIN_H
 #define M5SPOT_MAIN_H
 
-#define min(X, Y) (((X)<(Y))?(X):(Y))
-#define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
+#include <Arduino.h>
 
-//@formatter:off
-#ifdef DEBUG_M5SPOT
-#define M5S_DBG(...) Serial.printf( __VA_ARGS__ )
-#else
-#define M5S_DBG(...)
-#endif
-//@formatter:on
+//#define min(X, Y) (((X)<(Y))?(X):(Y))
+#define strStartsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
+
+template<class T> struct Rect {
+  T left;
+  T right;
+  T top;
+  T bottom;
+
+  Rect( T l, T t, T r, T b ): left(l), top(t), right(r), bottom(b) {};
+
+  T width() const { return right-left; };
+  T height() const { return bottom-top; };
+
+  Rect<T>   outersect( const Rect<T>& other ) const
+  {
+      return {min(left,other.left), min(top,other.top), max(right,other.right), max(bottom,other.bottom)};
+  }
+  Rect<T>   scaleBy( double x, double y ) const
+  {
+      return {left,top,left+width()*x,top+height()*y};
+  }
+  Rect<T>   shrinkBy( T x, T y ) const
+  {
+      return {left+x,top+y,right-2*x,bottom-2*y};
+  }
+};
 
 typedef struct {
     int httpCode;
@@ -18,7 +37,7 @@ typedef struct {
 } HTTP_response_t;
 
 enum SptfActions {
-    Iddle, GetToken, CurrentlyPlaying, Next, Previous, Toggle
+    Idle, GetToken, CurrentlyPlaying, Next, Previous, Toggle
 };
 
 enum GrantTypes {
@@ -39,8 +58,6 @@ typedef struct {
  * Function declarations
  */
 //@formatter:off
-void progressBar(uint8_t y, uint8_t val, uint16_t width = 200, uint16_t height = 7, uint16_t color = WHITE);
-
 void eventsSendLog(const char *logData, EventsLogTypes type = log_line);
 void eventsSendInfo(const char *msg, const char* payload = "");
 void eventsSendError(int code, const char *msg, const char *payload = "");
@@ -52,7 +69,6 @@ void sptfCurrentlyPlaying();
 void sptfNext();
 void sptfPrevious();
 void sptfToggle();
-void sptfDisplayAlbumArt(String url);
 
 void writeRefreshToken();
 void deleteRefreshToken();
