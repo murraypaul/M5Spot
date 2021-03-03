@@ -365,7 +365,7 @@ SptfActions DisplayManager::doLoop( SptfActions sptfAction, bool enableButtons )
             if( f1 != Point<uint16_t>(0,0) )
             {
                 auto currentmillis = millis();
-                if( currentmillis - lastFingerDown > 2000 || currentmillis < lastFingerDown )
+                if( currentmillis - lastFingerDown > 500 || currentmillis < lastFingerDown )
                 {
                     log_d("Finger down at (%d,%d), time %d vs last time %d",f1.x,f1.y,currentmillis,lastFingerDown);
                     lastFingerDown = currentmillis;
@@ -421,5 +421,7 @@ void DisplayManager::ShowSettingsMenu()
     preferences.putShort("MaxJpeg",(int16_t)MaxPreferredImageSize);
     preferences.end();
     
+    settingsManager.clearScreen();
+    settingsManager.Canvas.pushCanvas(settingsManager.CanvasPos.x,settingsManager.CanvasPos.y,UPDATE_MODE_GC16);
     Canvas.pushCanvas(CanvasPos.x,CanvasPos.y,UPDATE_MODE_GC16);
 }
