@@ -9,7 +9,6 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <base64.h>
-#include <Preferences.h>
 #include "main.h"
 #include "config.h"
 
@@ -52,7 +51,7 @@ void setup() {
     //-----------------------------------------------
     // Initialize M5Stack
     //-----------------------------------------------
-    DisplayManager::Init();
+    BaseDisplayManager.Init(true);
 
     char title[17];
     snprintf(title, sizeof(title), "M5Spot v%s", M5S_VERSION);
@@ -71,9 +70,9 @@ void setup() {
 
 //    Canvas.drawJpgFile(SPIFFS, "/logo128.jpg", 96, 50, 128, 128);
 
-    DisplayManager::drawString(&FreeSansBoldOblique12pt7b,1,TC_DATUM,title, 160, 10);
+    BaseDisplayManager.drawString(&FreeSansBoldOblique12pt7b,TC_DATUM, title, 160, 10);
 
-    DisplayManager::drawString(&FreeSans9pt7b,1,BC_DATUM,"Connecting to WiFi...", 160, 215);
+    BaseDisplayManager.drawString(&FreeSans9pt7b, BC_DATUM, "Connecting to WiFi...", 160, 215);
 
     WiFi.mode(WIFI_STA);
     for (auto i : AP_LIST) {
@@ -105,18 +104,18 @@ void setup() {
 //    Canvas.fillScreen(BLACK);
 //    Canvas.drawJpgFile(SPIFFS, "/logo128d.jpg", 96, 50, 128, 128);
 
-    DisplayManager::drawString(&FreeSansBoldOblique12pt7b,1,TC_DATUM,title, 160, 10);
+    BaseDisplayManager.drawString(&FreeSansBoldOblique12pt7b, TC_DATUM, title, 160, 10);
 
-    DisplayManager::GetCanvas().setFreeFont(&FreeMono9pt7b);
+    BaseDisplayManager.GetCanvas().setFreeFont(&FreeMono9pt7b);
 //    Canvas.setTextColor(WHITE);
-    DisplayManager::GetCanvas().setTextSize(1);
-    DisplayManager::GetCanvas().setCursor(0, 75);
-    DisplayManager::GetCanvas().printf(" SSID:      %s\n", WiFi.SSID().c_str());
-    DisplayManager::GetCanvas().printf(" IP:        %s\n", WiFi.localIP().toString().c_str());
-    DisplayManager::GetCanvas().printf(" STA MAC:   %s\n", WiFi.macAddress().c_str());
-    DisplayManager::GetCanvas().printf(" AP MAC:    %s\n", WiFi.softAPmacAddress().c_str());
-    DisplayManager::GetCanvas().printf(" Chip size: %s\n", prettyBytes(ESP.getFlashChipSize()).c_str());
-    DisplayManager::GetCanvas().printf(" Free heap: %s\n", prettyBytes(ESP.getFreeHeap()).c_str());
+    BaseDisplayManager.GetCanvas().setTextSize(1);
+    BaseDisplayManager.GetCanvas().setCursor(0, 75);
+    BaseDisplayManager.GetCanvas().printf(" SSID:      %s\n", WiFi.SSID().c_str());
+    BaseDisplayManager.GetCanvas().printf(" IP:        %s\n", WiFi.localIP().toString().c_str());
+    BaseDisplayManager.GetCanvas().printf(" STA MAC:   %s\n", WiFi.macAddress().c_str());
+    BaseDisplayManager.GetCanvas().printf(" AP MAC:    %s\n", WiFi.softAPmacAddress().c_str());
+    BaseDisplayManager.GetCanvas().printf(" Chip size: %s\n", prettyBytes(ESP.getFlashChipSize()).c_str());
+    BaseDisplayManager.GetCanvas().printf(" Free heap: %s\n", prettyBytes(ESP.getFreeHeap()).c_str());
 
 //    Canvas.setFreeFont(&FreeSans9pt7b);
 //    Canvas.setTextColor(sptf_green);
@@ -124,7 +123,7 @@ void setup() {
 //    Canvas.setTextDatum(BC_DATUM);
 //    Canvas.drawString("Press any button to continue...", 160, 230);
 
-    DisplayManager::GetCanvas().pushCanvas(0, 0, UPDATE_MODE_GC16);
+    BaseDisplayManager.GetCanvas().pushCanvas(0, 0, UPDATE_MODE_GC16);
     
 //    Serial.println("Init done");
     
@@ -141,7 +140,7 @@ void setup() {
     // Initialize HTTP server handlers
     //-----------------------------------------------
     events.onConnect([](AsyncEventSourceClient *client) {
-        log_i("\n> [%d] events.onConnect\n", micros());
+        log_i("> [%d] events.onConnect\n", micros());
     });
     server.addHandler(&events);
 
@@ -150,7 +149,7 @@ void setup() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         Serial.println("/");
         uint32_t ts = micros();
-        log_i("\n> [%d] server.on /\n", ts);
+        log_i("> [%d] server.on /\n", ts);
         if (access_token == "" && !getting_token) {
             getting_token = true;
             char auth_url[300] = "";
@@ -255,19 +254,19 @@ void setup() {
 //    Canvas.fillScreen(BLACK);
 //    Canvas.drawJpgFile(SPIFFS, "/logo128.jpg", 96, 50, 128, 128);
 
-    DisplayManager::drawString(&FreeSansBoldOblique12pt7b, 1, TC_DATUM,title, 160, 10);
+    BaseDisplayManager.drawString(&FreeSansBoldOblique12pt7b, TC_DATUM,title, 160, 10);
 
     if (refresh_token == "") {
-        DisplayManager::drawString(&FreeSans9pt7b, 1, BC_DATUM, "Point your browser to", 160, 205);
-        DisplayManager::drawString(&FreeSans12pt7b, 1, BC_DATUM, "http://m5spot.local", 160, 235);
+        BaseDisplayManager.drawString(&FreeSans9pt7b, BC_DATUM, "Point your browser to", 160, 205);
+        BaseDisplayManager.drawString(&FreeSans12pt7b, BC_DATUM, "http://m5spot.local", 160, 235);
     } else {
 //        Canvas.setFreeFont(&FreeSans9pt7b);
 //        Canvas.drawString("Ready...", 160, 230);
 
-        DisplayManager::clearScreen();
+        BaseDisplayManager.clearScreen();
         sptfAction = CurrentlyPlaying;
     }
-    DisplayManager::refreshScreen();
+    BaseDisplayManager.refreshScreen();
 }
 
 /**
@@ -288,22 +287,7 @@ void loop() {
         }
     }
 
-    // M5Stack handler
-    M5.update();
-    if (M5.BtnL.wasPressed()) {
-        log_i("BtnL - Previous");
-        sptfAction = Previous;
-    }
-
-    if (M5.BtnP.wasPressed()) {
-        log_i("BtnP - Toggle");
-        sptfAction = Toggle;
-    }
-
-    if (M5.BtnR.wasPressed()) {
-        log_i("BtnR - Next");
-        sptfAction = Next;
-    }
+    sptfAction = BaseDisplayManager.doLoop(sptfAction);
 
     // Spotify action handler
     switch (sptfAction) {
@@ -319,15 +303,15 @@ void loop() {
                 sptfCurrentlyPlaying();
             }
             break;
-        case Next:
-            sptfNext();
-            break;
-        case Previous:
-            sptfPrevious();
-            break;
-        case Toggle:
-            sptfToggle();
-            break;
+//        case Next:
+//            sptfNext();
+//            break;
+//        case Previous:
+//            sptfPrevious();
+//            break;
+//        case Toggle:
+//            sptfToggle();
+//            break;
     }
 }
 
@@ -574,8 +558,6 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
         }
     }
 
-    log_i("\n< [%d] HEAP: %d\n", ts, ESP.getFreeHeap());
-
     return response;
 }
 
@@ -589,7 +571,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
  */
 HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const char *content) {
     uint32_t ts = micros();
-    log_i("\n> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
+    log_v("> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
 
     char headers[512];
     snprintf(headers, sizeof(headers),
@@ -613,7 +595,7 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const c
  */
 void sptfGetToken(const String &code, GrantTypes grant_type) {
     uint32_t ts = micros();
-    log_i("\n> [%d] sptfGetToken(%s, %s)\n", ts, code.c_str(), grant_type == gt_authorization_code ? "authorization" : "refresh");
+    log_v("> [%d] sptfGetToken(%s, %s)\n", ts, code.c_str(), grant_type == gt_authorization_code ? "authorization" : "refresh");
 
     bool success = false;
 
@@ -679,12 +661,12 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
             }
             else
             {
-                log_i("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
+                log_v("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
                 eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
             }
         }
     } else {
-        log_i("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+        log_v("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
         eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
     }
 
@@ -701,7 +683,7 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
  */
 void sptfCurrentlyPlaying() {
     uint32_t ts = micros();
-    log_i("\n> [%d] sptfCurrentlyPlaying()\n", ts);
+    log_v("> [%d] sptfCurrentlyPlaying()", ts);
 
     last_curplay_millis = millis();
     next_curplay_millis = 0;
@@ -720,25 +702,13 @@ void sptfCurrentlyPlaying() {
                 next_curplay_millis = millis() + remaining_ms + 200;
             }
         }
-        static String previousId;
-
-        // If song has changed, refresh display
-        if (track.ID != previousId) 
-        {
-            previousId = track.ID;
-
-            DisplayManager::NewTrack(track);
-        }
-        if( track.DurationMS > 0 )
-            DisplayManager::drawProgressBar( (float) track.ProgressMS / track.DurationMS);
+        BaseDisplayManager.showTrack(track);
     } else if (response.httpCode == 204) {
         // No content
     } else {
-        log_i("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+        log_v("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
         eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
     }
-
-    log_i("< [%d] HEAP: %d\n", ts, ESP.getFreeHeap());
 }
 
 /**
@@ -812,6 +782,6 @@ String prettyBytes(uint32_t bytes) {
  * @param errMsg
  */
 void m5sEpitaph(const char *errMsg) {
-    DisplayManager::drawString(&FreeSans12pt7b, 1, CC_DATUM, errMsg, 160, 120);
-    DisplayManager::refreshScreen(UPDATE_MODE_GC16);
+    BaseDisplayManager.drawString(&FreeSans12pt7b, CC_DATUM, errMsg, 160, 120);
+    BaseDisplayManager.refreshScreen(UPDATE_MODE_GC16);
 }

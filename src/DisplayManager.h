@@ -1,25 +1,68 @@
 #pragma once
 
+#include <list>
+#include <memory>
+
 #include <M5EPD.h>
 
-class TrackDetails;
+#include "TrackDetails.h"
+
+class LayoutItem;
 
 struct DisplayManager
 {
     enum eLayout {
         eLandscape_SmallArt = 0,
         eLandscape_BigArt,
-        ePortrait_BigArt
+        ePortrait_BigArt,
+
+        eSettings
     };
-    static eLayout  CurrentLayout;
 
-    static void Init();
-    static void NewTrack( const TrackDetails& track );
+protected:
+    M5EPD_Canvas Canvas;
+    Size<uint16_t>  CanvasSize;
+    Point<uint16_t>  CanvasPos;
+    uint16_t Rotation = 0;
+    eLayout  CurrentLayout = ePortrait_BigArt;
+    std::list<std::shared_ptr<LayoutItem>>    LayoutItems;
+    TrackDetails CurrentTrack;
+    bool ShouldClose = false;
+    M5EPD_Canvas TempJpegCanvas;
+    String  CurrentCachedJpegURL;
 
-    static M5EPD_Canvas&   GetCanvas();
-    static void drawString( const GFXfont* font, uint8_t size, uint8_t datum, String str, uint32_t x, uint32_t y );
-    static void clearScreen();
-    static void refreshScreen( m5epd_update_mode_t mode = UPDATE_MODE_GC16 );
+public:
+    uint16_t MaxPreferredImageSize = 0;
 
-    static void drawProgressBar( float val );
+    DisplayManager();
+    void Init( bool appInit = false );
+    void SetLayout( eLayout );
+
+    void showTrack( const TrackDetails& track );
+    void redraw();
+
+    M5EPD_Canvas&   GetCanvas();
+    void drawRect( const Rect<uint16_t>& rect, uint32_t colour );
+    void fillRect( const Rect<uint16_t>& rect, uint32_t colour );
+    void drawString( const GFXfont* font, uint8_t datum, String str, const Rect<uint16_t>& rect );
+    void drawString( const GFXfont* font, uint8_t datum, String str, uint32_t x, uint32_t y );
+    void drawJpgUrl( String url, const Rect<uint16_t>& rect );
+    void drawJpgUrlScaled( String url, const Size<uint16_t>& sourceSize, const Rect<uint16_t>& targetRect );
+    
+    void clearScreen();
+    void refreshScreen( m5epd_update_mode_t mode = UPDATE_MODE_GC16 );
+    void M5EPD_flushAndUpdateArea( const Rect<uint16_t>& rect, m5epd_update_mode_t updateMode );
+
+    void drawProgressBar( float val );
+
+    SptfActions doLoop( SptfActions sptfAction, bool enableButtons = true );
+
+    SptfActions HandleButtonL();
+    SptfActions HandleButtonP();
+    SptfActions HandleButtonR();
+    SptfActions HandleSingleFinger( const Point<uint16_t>& hit );
+
+    void ShowSettingsMenu();
 };
+
+extern DisplayManager BaseDisplayManager;

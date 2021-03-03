@@ -1,128 +1,425 @@
 #include "main.h"
 #include "DisplayManager.h"
 
+#include "LayoutItem.h"
 #include "TrackDetails.h"
+#include "SpotifyController.h"
 
-M5EPD_Canvas Canvas(&M5.EPD);
+#include "Icons.h"
 
-M5EPD_Canvas& DisplayManager::GetCanvas() { return Canvas; };
+#include "Timer.h"
 
-DisplayManager::eLayout  DisplayManager::CurrentLayout = eLandscape_BigArt;
+DisplayManager BaseDisplayManager;
 
-const int       LandscapeSmallArt_AlbumArtURLIndex = 1;
-const Rect<int> LandscapeSmallArt_AlbumArtRect(0,0,300,300);
-const Rect<int> LandscapeSmallArt_ProgressRect(0,300,300,320);
-const Rect<int> LandscapeSmallArt_SongTitleRect(16,330,960,380);
-const Rect<int> LandscapeSmallArt_AlbumTitleRect(16,400,960,460);
-const Rect<int> LandscapeSmallArt_AlbumArtistsRect(16,480,960,540);
-const Rect<int> LandscapeSmallArt_MainTrackDetailsRect = LandscapeSmallArt_SongTitleRect.outersect(LandscapeSmallArt_AlbumTitleRect.outersect(LandscapeSmallArt_AlbumArtistsRect));
-
-const int       LandscapeBigArt_AlbumArtURLIndex = 0;
-const Rect<int> LandscapeBigArt_AlbumArtRect(0,0,540,540);
-const Rect<int> LandscapeBigArt_ProgressRect(540,520,960,540);
-const Rect<int> LandscapeBigArt_SongTitleRect(540+16,32,960,32+50);
-const Rect<int> LandscapeBigArt_AlbumTitleRect(540+16,128,960,128+50);
-const Rect<int> LandscapeBigArt_AlbumArtistsRect(540+16,192,960,192+50);
-const Rect<int> LandscapeBigArt_MainTrackDetailsRect = LandscapeBigArt_SongTitleRect.outersect(LandscapeBigArt_AlbumTitleRect.outersect(LandscapeBigArt_AlbumArtistsRect));
-
-#define MAP(ret,name,type) \
-const ret name##type() \
-{ \
-    switch( DisplayManager::CurrentLayout ) \
-    { \
-        case DisplayManager::eLayout::eLandscape_SmallArt: \
-        default: \
-            return LandscapeSmallArt_##name##type; \
-        case DisplayManager::eLayout::eLandscape_BigArt: \
-            return LandscapeBigArt_##name##type; \
-    } \
-}
-MAP(int,AlbumArt,URLIndex);
-MAP(Rect<int>,AlbumArt,Rect);
-MAP(Rect<int>,Progress,Rect);
-MAP(Rect<int>,SongTitle,Rect);
-MAP(Rect<int>,AlbumTitle,Rect);
-MAP(Rect<int>,AlbumArtists,Rect);
-MAP(Rect<int>,MainTrackDetails,Rect);
-
-template <class T>
-void Canvas_drawRect( M5EPD_Canvas& canvas, Rect<T> rect, uint32_t colour )
+DisplayManager::DisplayManager()
+: Canvas(&M5.EPD)
+, TempJpegCanvas(&M5.EPD)
 {
-    canvas.drawRect(rect.left,rect.top,rect.width(),rect.height(),colour);
-}
-template <class T>
-void Canvas_fillRect( M5EPD_Canvas& canvas, Rect<T> rect, uint32_t colour )
-{
-    canvas.fillRect(rect.left,rect.top,rect.width(),rect.height(),colour);
-}
-template <class T>
-void Canvas_drawString( M5EPD_Canvas& canvas, Rect<T> rect, String str )
-{
-    canvas.drawString(str,rect.left,rect.top);
+
 }
 
-template <class T>
-void M5EPD_flushAndUpdateArea( M5EPD_Canvas& canvas, Rect<T> rect, m5epd_update_mode_t updateMode )
+M5EPD_Canvas& DisplayManager::GetCanvas()
 {
-    M5.EPD.WriteFullGram4bpp((uint8_t*)canvas.frameBuffer());
-    M5.EPD.UpdateArea(rect.left, rect.top, rect.width(), rect.height(),updateMode);
+    return Canvas;
 }
 
-void DisplayManager::Init()
+void DisplayManager::Init( bool appInit )
 {
-    M5.begin();
-    M5.TP.SetRotation(0);
-    M5.EPD.SetRotation(0);
-    M5.EPD.Clear(true);
+    if( appInit )
+    {
+        M5.begin();
 
-    Canvas.createCanvas(960, 540);
+        preferences.begin(Preferences_App);
+        CurrentLayout = (eLayout)preferences.getChar("Layout",(int8_t)CurrentLayout);
+        Rotation = preferences.getShort("Rotation",(int16_t)Rotation);
+        MaxPreferredImageSize = preferences.getShort("MaxJpeg",(int16_t)MaxPreferredImageSize);
+        preferences.end();
+    }
+
+    SetLayout(CurrentLayout);
 }
 
-void DisplayManager::NewTrack( const TrackDetails& track )
+void DisplayManager::SetLayout( eLayout layout )
 {
-    Canvas.fillCanvas(0);
+    Canvas.deleteCanvas();
 
-    // Display album art
-    Canvas.drawJpgUrl(track.ArtURL[AlbumArtURLIndex()], AlbumArtRect().top, AlbumArtRect().left, AlbumArtRect().width(), AlbumArtRect().height(), JPEG_DIV_NONE);
-    M5EPD_flushAndUpdateArea(Canvas, AlbumArtRect(), UPDATE_MODE_GC16);
+    LayoutItems.clear();
 
-    // Display song name
-    Canvas_fillRect(Canvas, SongTitleRect(), 0);
-    drawString(&FreeSansBold24pt7b, 1, TL_DATUM, track.Name, SongTitleRect().left, SongTitleRect().top);
+    bool clearCanvas = true;
+    bool flip = Rotation >= 180;
+    switch( layout )
+    {
+    case eLayout::eLandscape_BigArt:
+    default:
+        Rotation = 0 + (flip?180:0);
+        CanvasPos = {0,0};
+        CanvasSize = {960,540};
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumArtAutoScaled>(Rect<uint16_t>{0,0,540,540}) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_SongTitle>(Rect<uint16_t>{540+16,32,960,32+50},&FreeSansBold24pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumTitle>(Rect<uint16_t>{540+16,128,960,128+50},&FreeSansOblique18pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumArtists>(Rect<uint16_t>{540+16,192,960,192+50},&FreeSans18pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_ProgressBar>(Rect<uint16_t>{540,520,960,540}) );
 
-    // Display album name
-    Canvas_fillRect(Canvas, AlbumTitleRect(), 0);
-    drawString(&FreeSansOblique18pt7b, 1, TL_DATUM, track.AlbumName, AlbumTitleRect().left, AlbumTitleRect().top);
+        {
+            int iButton = 0;
+            uint16_t margin = 540 + 18;
+            uint8_t spacing = 16;
+            uint8_t size = 64;
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_automatic_64_4bpp_bmp, sizeof(icons8_automatic_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShowSettingsMenu(); })) );
+        }
+        break;
+    case eLayout::eLandscape_SmallArt:
+        Rotation = 0 + (flip?180:0);
+        CanvasPos = {0,0};
+        CanvasSize = {960,540};
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumArt>(Rect<uint16_t>{0,0,300,300},1) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_SongTitle>(Rect<uint16_t>{16,330,960,380},&FreeSansBold18pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumTitle>(Rect<uint16_t>{16,400,960,460},&FreeSansOblique12pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumArtists>(Rect<uint16_t>{16,480,960,540},&FreeSans12pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_ProgressBar>(Rect<uint16_t>{0,300,300,320}) );
 
-    // Display artists names
-    Canvas_fillRect(Canvas, AlbumArtistsRect(), 0);
-    drawString(&FreeSansOblique18pt7b, 1, TL_DATUM, track.ArtistsName, AlbumArtistsRect().left, AlbumArtistsRect().top);
+        {
+            int iButton = 0;
+            uint16_t margin = 300 + 46;
+            uint8_t spacing = 32;
+            uint8_t size = 64;
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_automatic_64_4bpp_bmp, sizeof(icons8_automatic_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShowSettingsMenu(); })) );
+        }
+        break;
+    case eLayout::ePortrait_BigArt:
+        Rotation = 90 + (flip?180:0);
+        CanvasPos = {0,0};
+        CanvasSize = {540,960};
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumArtAutoScaled>(Rect<uint16_t>{0,0,540,540}) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_SongTitle>(Rect<uint16_t>{16,570,540,630},&FreeSansBold18pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumTitle>(Rect<uint16_t>{16,640,540,690},&FreeSansOblique12pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_AlbumArtists>(Rect<uint16_t>{16,700,540,760},&FreeSans12pt7b) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_ProgressBar>(Rect<uint16_t>{0,540,540,560}) );
 
-    M5EPD_flushAndUpdateArea(Canvas, MainTrackDetailsRect(), UPDATE_MODE_DU);
+        {
+            int iButton = 0;
+            uint16_t margin = 46;
+            uint8_t spacing = 32;
+            uint8_t size = 64;
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_automatic_64_4bpp_bmp, sizeof(icons8_automatic_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShowSettingsMenu(); })) );
+        }
+        break;
+    case eLayout::eSettings:
+        // Rotation unchanged
+        if( Rotation % 180 == 0 )
+            CanvasPos = {280,70};
+        else
+            CanvasPos = {70,280};
+        CanvasSize = {400,400};
+        clearCanvas = false;
+
+        LayoutItems.push_back( std::make_shared<LayoutItem_Rectangle>(Rect<uint16_t>{0,0,400,400}) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_Rectangle>(Rect<uint16_t>{5,5,395,395}) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_StaticText>(Rect<uint16_t>{10,10,390,40},&FreeSansBold24pt7b,LayoutItemWithFont::eAlign::eCentre,String("Settings"),nullptr) );
+
+        {
+            LayoutItems.push_back( std::make_shared<LayoutItem_StaticText>(Rect<uint16_t>{10,60,390,80},&FreeSans12pt7b,LayoutItemWithFont::eAlign::eLeft,String("Layout"),nullptr) );
+
+            int iButton = 0;
+            uint8_t margin = 10 + 19;
+            uint8_t spacing = 24;
+            uint8_t size = 64;
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 100},{64, 64}}, icon_layout_landscape_big_4bpp_bmp, sizeof(icon_layout_landscape_big_4bpp_bmp)
+            , [](){ return BaseDisplayManager.CurrentLayout == DisplayManager::eLayout::eLandscape_BigArt; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.SetLayout(DisplayManager::eLayout::eLandscape_BigArt); this->Rotation = BaseDisplayManager.Rotation; if( this->Rotation % 180 == 0 ) this->CanvasPos = {280,70}; else this->CanvasPos = {70,280}; BaseDisplayManager.redraw(); this->redraw(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 100},{64, 64}}, icon_layout_landscape_small_4bpp_bmp, sizeof(icon_layout_landscape_small_4bpp_bmp)
+            , [](){ return BaseDisplayManager.CurrentLayout == DisplayManager::eLayout::eLandscape_SmallArt; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.SetLayout(DisplayManager::eLayout::eLandscape_SmallArt); this->Rotation = BaseDisplayManager.Rotation; if( this->Rotation % 180 == 0 ) this->CanvasPos = {280,70}; else this->CanvasPos = {70,280}; BaseDisplayManager.redraw(); this->redraw(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 100},{64, 64}}, icon_layout_portait_big_4bpp_bmp, sizeof(icon_layout_portait_big_4bpp_bmp)
+            , [](){ return BaseDisplayManager.CurrentLayout == DisplayManager::eLayout::ePortrait_BigArt; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.SetLayout(DisplayManager::eLayout::ePortrait_BigArt); this->Rotation = BaseDisplayManager.Rotation; if( this->Rotation % 180 == 0 ) this->CanvasPos = {280,70}; else this->CanvasPos = {70,280}; BaseDisplayManager.redraw(); this->redraw(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 100},{64, 64}}, icon_rotate_4bpp_bmp, sizeof(icon_rotate_4bpp_bmp)
+            , [](){ return BaseDisplayManager.Rotation >= 180; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.Rotation = (BaseDisplayManager.Rotation + 180) % 360; this->Rotation = (this->Rotation + 180) % 180; BaseDisplayManager.SetLayout(BaseDisplayManager.CurrentLayout); this->Rotation = BaseDisplayManager.Rotation; if( this->Rotation % 180 == 0 ) this->CanvasPos = {280,70}; else this->CanvasPos = {70,280}; BaseDisplayManager.redraw(); this->redraw(); })) );
+        }
+        {
+            uint16_t baseY = 180;
+            LayoutItems.push_back( std::make_shared<LayoutItem_StaticText>(Rect<uint16_t>{10,baseY,390,baseY+20},&FreeSans12pt7b,LayoutItemWithFont::eAlign::eLeft,String("Album Art Source Resolution"),nullptr) );
+
+            int iButton = 0;
+            uint8_t margin = 10 + 19;
+            uint8_t spacing = 24;
+            uint8_t size = 64;
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), baseY+40},{64, 64}}, icon_image_size_small_4bpp_bmp, sizeof(icon_image_size_small_4bpp_bmp)
+            , [](){ return BaseDisplayManager.MaxPreferredImageSize == 128; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.MaxPreferredImageSize = 128; BaseDisplayManager.redraw(); this->redraw(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), baseY+40},{64, 64}}, icon_image_size_medium_4bpp_bmp, sizeof(icon_image_size_medium_4bpp_bmp)
+            , [](){ return BaseDisplayManager.MaxPreferredImageSize == 300; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.MaxPreferredImageSize = 300; BaseDisplayManager.redraw(); this->redraw(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_ButtonWithHighlight>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), baseY+40},{64, 64}}, icon_image_size_large_4bpp_bmp, sizeof(icon_image_size_large_4bpp_bmp)
+            , [](){ return BaseDisplayManager.MaxPreferredImageSize == 0; }
+            , std::make_shared<LayoutItemAction_StdFunction>([this](){ BaseDisplayManager.MaxPreferredImageSize = 0; BaseDisplayManager.redraw(); this->redraw(); })) );
+        }
+
+        LayoutItems.push_back( std::make_shared<LayoutItem_StaticText>(Rect<uint16_t>{10,400-36,390,400-24},&FreeSans12pt7b,LayoutItemWithFont::eAlign::eLeft,String("Icons by Icons8"),nullptr) );
+        LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{400-64-12, 400-64-12},{64, 64}}, icons8_close_window_64_4bpp_bmp, sizeof(icons8_close_window_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShouldClose = true; })) );
+
+        for( auto& item : LayoutItems )
+            item->DrawOnlyOnNewTrack = false;
+
+        break;
+    }
+
+    CurrentLayout = layout;
+
+    Rotation = Rotation % 360;
+    log_d("New rotation %d",Rotation);
+
+    M5.TP.SetRotation(Rotation);
+    M5.EPD.SetRotation(Rotation);
+    if( clearCanvas )
+        M5.EPD.Clear(true);
+
+    log_d("Canvas size (%d,%d) at (%d,%d)", CanvasSize.cx, CanvasSize.cy, CanvasPos.x, CanvasPos.y);
+    Canvas.createCanvas(CanvasSize.cx,CanvasSize.cy);
 }
 
-void DisplayManager::drawString( const GFXfont* font, uint8_t size, uint8_t datum, String str, uint32_t x, uint32_t y )
+void DisplayManager::drawJpgUrl( String url, const Rect<uint16_t>& rect )
 {
-    Canvas.setFreeFont(font);
-    Canvas.setTextSize(size);
+    Canvas.drawJpgUrl(url.c_str(), rect.left, rect.top, rect.width(), rect.height(), 0, 0, JPEG_DIV_NONE);
+    M5EPD_flushAndUpdateArea(rect, UPDATE_MODE_GC16);
+}
+
+void DisplayManager::drawJpgUrlScaled( String url, const Size<uint16_t>& sourceSize, const Rect<uint16_t>& targetRect )
+{
+    FunctionTimer timer("drawJpgUrlScaled");
+    if( sourceSize.cx == targetRect.width() && sourceSize.cy == targetRect.height()
+    || sourceSize.cx <= 0 || sourceSize.cy <= 0 || targetRect.width() <= 0 || targetRect.height() <= 0 )
+    {
+        drawJpgUrl(url,targetRect);
+        return;
+    }
+
+    if( url != CurrentCachedJpegURL )
+    {
+        TempJpegCanvas.deleteCanvas();
+        if( !TempJpegCanvas.createCanvas(sourceSize.cx, sourceSize.cy) )
+        {
+            drawJpgUrl(url,targetRect);
+            return;
+        }
+        TempJpegCanvas.drawJpgUrl(url.c_str(), 0, 0, sourceSize.cx, sourceSize.cy, 0, 0, JPEG_DIV_NONE);
+        CurrentCachedJpegURL = url;
+    }
+
+
+    fillRect(targetRect,0);
+
+    double xScale = (double) sourceSize.cx / targetRect.width();
+    double yScale = (double) sourceSize.cy / targetRect.height();
+    log_d("Starting scaled copy (%d,%d) -> (%d,%d) = (%lf,%lf)",sourceSize.cx,sourceSize.cy,targetRect.width(),targetRect.height(),xScale,yScale);
+    for( uint16_t y = 0 ; y < targetRect.height() ; y++ )
+    {
+        for( uint16_t x = 0 ; x < targetRect.width() ; x++ )
+        {
+            uint16_t sx = x * xScale;    
+            uint16_t sy = y * yScale;
+//            log_d("copying (%d,%d) to (%d,%d)",sx,sy,x,y);
+            uint8_t colour = TempJpegCanvas.readPixel(sx,sy);
+            Canvas.drawPixel(x,y,colour);
+        }
+//        auto ts = millis();
+//        log_d("%d: row %d done", ts, y);
+    }
+    log_d("Finished scaled copy");
+    
+    M5EPD_flushAndUpdateArea(targetRect, UPDATE_MODE_GC16);
+}
+
+void DisplayManager::drawString( const GFXfont* font, uint8_t datum, String str, const Rect<uint16_t>& rect )
+{
+    switch( datum )
+    {
+        case TL_DATUM:
+        default:
+            drawString(font, datum, str, rect.left, rect.top);
+            break;
+        case TR_DATUM:
+            drawString(font, datum, str, rect.right, rect.top);
+            break;
+        case TC_DATUM:
+            drawString(font, datum, str, (rect.left+rect.right)/2, rect.top);
+            break;
+    }
+}
+
+void DisplayManager::drawString( const GFXfont* font, uint8_t datum, String str, uint32_t x, uint32_t y )
+{
+    if( font )
+        Canvas.setFreeFont(font);
     Canvas.setTextDatum(datum);
     Canvas.drawString(str, x, y);
 }
 
-void DisplayManager::drawProgressBar(float val) 
+void DisplayManager::showTrack( const TrackDetails& track ) 
 {
-    Canvas_fillRect(Canvas, ProgressRect(), 0);
-    Canvas_drawRect(Canvas, ProgressRect().shrinkBy(2,2), 15);
-    Canvas_fillRect(Canvas, ProgressRect().shrinkBy(2,2).scaleBy(val,1), 15);
-    M5EPD_flushAndUpdateArea(Canvas, ProgressRect(), UPDATE_MODE_DU);
+    bool bNewTrack = CurrentTrack.ID != track.ID;
+    if( bNewTrack )
+        clearScreen();
+    Rect<uint16_t> redrawRect{0,0,0,0};
+    for( auto& item : LayoutItems )
+    {
+        if( !item.get( ))
+            continue;
+        if( bNewTrack || !item->DrawOnlyOnNewTrack )
+        {
+            item->draw( *this, track );
+            if( redrawRect.width() == 0 )
+                redrawRect = item->Location;
+            else
+                redrawRect = redrawRect.outersect(item->Location);
+        }
+    }
+    if( bNewTrack )
+        refreshScreen(UPDATE_MODE_GC16);
+    else if( redrawRect.width() > 0 )
+        M5EPD_flushAndUpdateArea(redrawRect, UPDATE_MODE_DU);
+
+    CurrentTrack = track;
+}
+
+void DisplayManager::redraw()
+{
+    for( auto& item : LayoutItems )
+    {
+        if( !item.get( ))
+            continue;
+        item->draw( *this, CurrentTrack );
+    }
+    refreshScreen(UPDATE_MODE_GC16);
 }
 
 void DisplayManager::clearScreen()
 {
-    Canvas.fillRect(0,0,960,540,0);
+    Canvas.fillCanvas(0);
 }
 
 void DisplayManager::refreshScreen( m5epd_update_mode_t mode )
 {
-    Canvas.pushCanvas(0,0,mode);
+    Canvas.pushCanvas(CanvasPos.x,CanvasPos.y,mode);
+}
+
+void DisplayManager::drawRect( const Rect<uint16_t>& rect, uint32_t colour )
+{
+    Canvas.drawRect(rect.left,rect.top,rect.width(),rect.height(),colour);
+}
+void DisplayManager::fillRect( const Rect<uint16_t>& rect, uint32_t colour )
+{
+    Canvas.fillRect(rect.left,rect.top,rect.width(),rect.height(),colour);
+}
+void DisplayManager::M5EPD_flushAndUpdateArea( const Rect<uint16_t>& rect, m5epd_update_mode_t updateMode )
+{
+    M5.EPD.WriteFullGram4bpp((uint8_t*)Canvas.frameBuffer());
+    M5.EPD.UpdateArea(rect.left, rect.top, rect.width(), rect.height(),updateMode);
+} 
+
+SptfActions DisplayManager::doLoop( SptfActions sptfAction, bool enableButtons )
+{
+    // M5Stack handler
+    M5.update();
+    if (enableButtons && M5.BtnL.wasPressed()) {
+        log_i("BtnL - Previous");
+        sptfAction = HandleButtonL();
+//        sptfAction = Previous;
+    }
+    else if (enableButtons && M5.BtnP.wasPressed()) {
+        log_i("BtnP - Toggle");
+        sptfAction = HandleButtonP();
+//        sptfAction = Toggle;
+    }
+    else if (enableButtons && M5.BtnR.wasPressed()) {
+        log_i("BtnR - Next");
+        sptfAction = HandleButtonR();
+//        sptfAction = Next;
+    }
+    else if( M5.TP.avaliable() )
+    {
+        // Prevent repeated press detection
+        static uint32_t lastFingerDown = 0;
+        if( !M5.TP.isFingerUp() )
+        {
+            M5.TP.update();
+            Point<uint16_t> f1 = {M5.TP.readFingerX(0), M5.TP.readFingerY(0)};
+            Point<uint16_t> f2 = {M5.TP.readFingerX(1), M5.TP.readFingerY(1)};
+            auto numFingers = M5.TP.getFingerNum();
+//            delay(100);
+            M5.TP.flush();
+            // Get spurious touches at startup
+            if( f1 != Point<uint16_t>(0,0) )
+            {
+                auto currentmillis = millis();
+                if( currentmillis - lastFingerDown > 2000 || currentmillis < lastFingerDown )
+                {
+                    log_d("Finger down at (%d,%d), time %d vs last time %d",f1.x,f1.y,currentmillis,lastFingerDown);
+                    lastFingerDown = currentmillis;
+                    switch( numFingers )
+                    {
+                        case 2:
+                //          HandleDoubleFinger( f1.first, f1.second, f2.first, f2.second );
+                        break;
+                        case 1:
+                        sptfAction = HandleSingleFinger( f1 );
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return sptfAction;
+}
+
+SptfActions DisplayManager::HandleButtonL() { SpotifyController::PlayPreviousTrack(); return SptfActions::CurrentlyPlaying; };
+SptfActions DisplayManager::HandleButtonP() { SpotifyController::PlayOrPauseCurrentTrack(); return SptfActions::CurrentlyPlaying; };
+SptfActions DisplayManager::HandleButtonR() { SpotifyController::PlayNextTrack(); return SptfActions::CurrentlyPlaying; };
+SptfActions DisplayManager::HandleSingleFinger( const Point<uint16_t>& hitIn )
+{
+    Point<uint16_t> hit = hitIn - CanvasPos;
+    log_d("Converted hit from (%d,%d) to (%d,%d), canvas pos (%d,%d)"
+        , hitIn.x, hitIn.y, hit.x, hit.y, CanvasPos.x, CanvasPos.y );
+    for( auto& item : LayoutItems )
+        if( item->hitTest(hit) )
+            break;
+    return SptfActions::CurrentlyPlaying;
+}
+
+void DisplayManager::ShowSettingsMenu()
+{
+    DisplayManager settingsManager;
+    settingsManager.Rotation = Rotation;
+    settingsManager.SetLayout(eLayout::eSettings);
+
+    settingsManager.redraw();
+    settingsManager.ShouldClose = false;
+
+    while( !settingsManager.ShouldClose )
+    {
+        settingsManager.doLoop(SptfActions::CurrentlyPlaying,false);
+        delay(100);
+        yield();
+    }
+
+    preferences.begin(Preferences_App);
+    preferences.putChar("Layout",(int8_t)CurrentLayout);
+    preferences.putShort("Rotation",(int16_t)Rotation);
+    preferences.putShort("MaxJpeg",(int16_t)MaxPreferredImageSize);
+    preferences.end();
+    
+    Canvas.pushCanvas(CanvasPos.x,CanvasPos.y,UPDATE_MODE_GC16);
 }

@@ -9,7 +9,7 @@ struct TrackDetails
     String      Name;
     String      AlbumName;
     String      ArtistsName;
-    String      ArtURL[3];
+    std::pair<Size<uint16_t>,String>      ArtURL[3];
     uint32_t    ProgressMS = 0;
     uint32_t    DurationMS = 0;
 
