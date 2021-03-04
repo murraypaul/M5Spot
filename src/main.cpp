@@ -14,6 +14,7 @@
 
 #include <M5EPD.h>
 
+#include "SpotifyController.h"
 #include "DisplayManager.h"
 #include "TrackDetails.h"
 
@@ -23,24 +24,12 @@ WiFiMulti wifiMulti;
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
-String auth_code;
-String access_token;
-String refresh_token;
-
-uint32_t token_lifetime_ms = 0;
-uint32_t token_millis = 0;
-uint32_t last_curplay_millis = 0;
-uint32_t next_curplay_millis = 0;
-
-bool getting_token = false;
 bool send_events = true;
 static bool sptf_is_playing = true;
 
-SptfActions sptfAction = Idle;
-
 Preferences preferences;
 const char* Preferences_App = "M5Spot";
-const char* Preferences_Key = "Sptfrftok";
+
 
 
 /**
@@ -150,67 +139,32 @@ void setup() {
         Serial.println("/");
         uint32_t ts = micros();
         log_i("> [%d] server.on /\n", ts);
-        if (access_token == "" && !getting_token) {
-            getting_token = true;
-            char auth_url[300] = "";
-            snprintf(auth_url, sizeof(auth_url),
-                     "https://accounts.spotify.com/authorize/"
-                     "?response_type=code"
-                     "&scope=user-read-private+user-read-currently-playing+user-read-playback-state+user-modify-playback-state"
-                     "&redirect_uri=http%%3A%%2F%%2Fm5spot.local%%2Fcallback%%2F"
-                     "&client_id=%s",
-                     SPTF_CLIENT_ID
-            );
-            log_i("  [%d] Redirect to: %s\n", ts, auth_url);
-            request->redirect(auth_url);
-        } else {
-//            request->send(SPIFFS, "/index.html");
-        }
+        SpotifyController::AuthoriseIfNeeded(request);
     });
 
     server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
         Serial.println("/callback");
-        auth_code = "";
+        bool bRedirect = false;
         uint8_t paramsNr = request->params();
         for (uint8_t i = 0; i < paramsNr; i++) {
             AsyncWebParameter *p = request->getParam(i);
             if (p->name() == "code") {
-                auth_code = p->value();
-                sptfAction = GetToken;
+                SpotifyController::GetToken(p->value(), SpotifyController::gt_authorization_code);
+                bRedirect = true;
                 break;
             }
         }
-        if (sptfAction == GetToken) {
+        if (bRedirect) {
             request->redirect("/");
         } else {
             request->send(204);
         }
     });
 
-    server.on("/next", HTTP_GET, [](AsyncWebServerRequest *request) {
-        sptfAction = Next;
-        request->send(204);
-    });
-
-    server.on("/previous", HTTP_GET, [](AsyncWebServerRequest *request) {
-        sptfAction = Previous;
-        request->send(204);
-    });
-
-    server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
-        sptfAction = Toggle;
-        request->send(204);
-    });
-
-    server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", String(ESP.getFreeHeap()));
-    });
-
     server.on("/resettoken", HTTP_GET, [](AsyncWebServerRequest *request) {
-        access_token = "";
-        refresh_token = "";
-        deleteRefreshToken();
-        sptfAction = Idle;
+        SpotifyController::access_token = "";
+        SpotifyController::refresh_token = "";
+        SpotifyController::DeleteRefreshToken();
         request->send(200, "text/plain", "Tokens deleted, M5Spot will restart");
         uint32_t start = millis();
         while (true) {
@@ -232,11 +186,6 @@ void setup() {
         }
     });
 
-    server.on("/toggleevents", HTTP_GET, [](AsyncWebServerRequest *request) {
-        send_events = !send_events;
-        request->send(200, "text/plain", send_events ? "1" : "0");
-    });
-
     server.onNotFound([](AsyncWebServerRequest *request) {
         request->send(404);
     });
@@ -246,7 +195,7 @@ void setup() {
     //-----------------------------------------------
     // Get refresh token from EEPROM
     //-----------------------------------------------
-    refresh_token = readRefreshToken();
+    SpotifyController::ReadRefreshToken();
 
     //-----------------------------------------------
     // End of setup
@@ -256,7 +205,7 @@ void setup() {
 
     BaseDisplayManager.drawString(&FreeSansBoldOblique12pt7b, TC_DATUM,title, 160, 10);
 
-    if (refresh_token == "") {
+    if (SpotifyController::refresh_token == "") {
         BaseDisplayManager.drawString(&FreeSans9pt7b, BC_DATUM, "Point your browser to", 160, 205);
         BaseDisplayManager.drawString(&FreeSans12pt7b, BC_DATUM, "http://m5spot.local", 160, 235);
     } else {
@@ -264,7 +213,6 @@ void setup() {
 //        Canvas.drawString("Ready...", 160, 230);
 
         BaseDisplayManager.clearScreen();
-        sptfAction = CurrentlyPlaying;
     }
     BaseDisplayManager.refreshScreen();
 }
@@ -273,46 +221,20 @@ void setup() {
  * Main loop
  */
 void loop() {
-
-    uint32_t cur_millis = millis();
+    if (!WiFi.isConnected()) {
+        log_i("Lost WiFi connection");
+        uint8_t count = 20;
+        while (count-- && (wifiMulti.run() != WL_CONNECTED)) {
+            delay(500);
+        }
+    }    
+    if (!WiFi.isConnected()) 
+        return;
 
     // Refreh Spotify access token either on M5Spot startup or at token expiration delay
     // The number of requests is limited to 1 every 5 seconds
-    if (refresh_token != ""
-        && (token_millis == 0 || (cur_millis - token_millis >= token_lifetime_ms))) {
-        static uint32_t gettoken_millis = 0;
-        if (cur_millis - gettoken_millis >= 5000) {
-            sptfGetToken(refresh_token);
-            gettoken_millis = cur_millis;
-        }
-    }
-
-    sptfAction = BaseDisplayManager.doLoop(sptfAction);
-
-    // Spotify action handler
-    switch (sptfAction) {
-        case Idle:
-            break;
-        case GetToken:
-            sptfGetToken(auth_code, gt_authorization_code);
-            break;
-        case CurrentlyPlaying:
-            if (next_curplay_millis && (cur_millis >= next_curplay_millis)) {
-                sptfCurrentlyPlaying();
-            } else if (cur_millis - last_curplay_millis >= SPTF_POLLING_DELAY) {
-                sptfCurrentlyPlaying();
-            }
-            break;
-//        case Next:
-//            sptfNext();
-//            break;
-//        case Previous:
-//            sptfPrevious();
-//            break;
-//        case Toggle:
-//            sptfToggle();
-//            break;
-    }
+    if(SpotifyController::refresh_token != "")
+        BaseDisplayManager.doLoop();
 }
 
 
@@ -391,48 +313,6 @@ String b64Encode(String str) {
     return encodedStr;
 }
 
-
-/**
- * Write refresh token to EEPROM
- */
-void writeRefreshToken() {
-  Serial.println("Writing refresh token");
-  Serial.println(refresh_token);
-  preferences.begin(Preferences_App);
-  preferences.putString(Preferences_Key,refresh_token);
-  preferences.end();
-}
-
-
-/**
- * Delete refresh token from EEPROM
- */
-void deleteRefreshToken() {
-  Serial.println("Deleting refresh token");
-  preferences.begin(Preferences_App);
-//  if( preferences.isKey(Preferences_Key) )
-    preferences.remove(Preferences_Key);
-  preferences.end();
-}
-
-
-/**
- * Read refresh token from EEPROM
- *
- * @return String
- */
-String readRefreshToken() {
-  Serial.println("Reading refresh token");
-  log_i("\n> [%d] readRefreshToken()\n", micros());
-
-  String tok;
-  preferences.begin(Preferences_App);
-//  if( preferences.isKey(Preferences_Key) )
-    tok = preferences.getString(Preferences_Key);
-  preferences.end();
-  return tok;
-}
-
 /**
  * HTTP request
  *
@@ -503,7 +383,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
                 // Read response headers
                 readSize = client.readBytesUntil('\n', buff, buffSize);
                 buff[readSize - 1] = '\0'; // replace /r by \0
-//                log_i("%s\n", buff);
+                log_v("%s\n", buff);
                 eventsSendLog(buff);
                 if (strStartsWith(buff, "HTTP/1.")) {
                     buff[12] = '\0';
@@ -520,14 +400,14 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
                 } else if (buff[0] == '\0') {
                     // End of headers
                     EOH = true;
-//                    log_i("<EOH>\n");
+                    log_v("<EOH>\n");
                     eventsSendLog("");
                 }
             } else {
                 // Read response content
                 readSize = client.readBytes(buff, min(buffSize - 1, availableSize));
                 buff[readSize] = '\0';
-//                log_i("%s",buff);
+                log_v("%s",buff);
                 eventsSendLog(buff, log_raw);
                 response.payload += buff;
                 totatlReadSize += readSize;
@@ -547,11 +427,10 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
 
     if( response.payload.indexOf("Invalid refresh token") != -1 )
     {
-        log_i("  [%d] Invalid refresh token, clearing and restarting\n", ts);
-        access_token = "";
-        refresh_token = "";
-        deleteRefreshToken();
-        sptfAction = Idle;
+        log_e("  [%d] Invalid refresh token, clearing and restarting\n", ts);
+        SpotifyController::access_token = "";
+        SpotifyController::refresh_token = "";
+        SpotifyController::DeleteRefreshToken();
         ESP.restart();
         while (true) {
             yield();
@@ -560,198 +439,6 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
 
     return response;
 }
-
-
-/**
- * Call Spotify API
- *
- * @param method
- * @param endpoint
- * @return
- */
-HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const char *content) {
-    uint32_t ts = micros();
-    log_v("> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
-
-    char headers[512];
-    snprintf(headers, sizeof(headers),
-             "%s /v1/me/player%s HTTP/1.1\r\n"
-             "Host: api.spotify.com\r\n"
-             "Authorization: Bearer %s\r\n"
-             "Content-Length: %d\r\n"
-             "Connection: close\r\n\r\n",
-             method, endpoint, access_token.c_str(), strlen(content)
-    );
-
-    return httpRequest("api.spotify.com", 443, headers, content);
-}
-
-
-/**
- * Get Spotify token
- *
- * @param code          Either an authorization code or a refresh token
- * @param grant_type    [gt_authorization_code|gt_refresh_token]
- */
-void sptfGetToken(const String &code, GrantTypes grant_type) {
-    uint32_t ts = micros();
-    log_v("> [%d] sptfGetToken(%s, %s)\n", ts, code.c_str(), grant_type == gt_authorization_code ? "authorization" : "refresh");
-
-    bool success = false;
-
-    char requestContent[512];
-    if (grant_type == gt_authorization_code) {
-        snprintf(requestContent, sizeof(requestContent),
-                 "grant_type=authorization_code"
-                 "&redirect_uri=http%%3A%%2F%%2Fm5spot.local%%2Fcallback%%2F"
-                 "&code=%s",
-                 code.c_str()
-        );
-    } else {
-        snprintf(requestContent, sizeof(requestContent),
-                 "grant_type=refresh_token&refresh_token=%s",
-                 code.c_str()
-        );
-    }
-
-    uint8_t basicAuthSize = sizeof(SPTF_CLIENT_ID) + sizeof(SPTF_CLIENT_SECRET);
-    char basicAuth[basicAuthSize];
-    snprintf(basicAuth, basicAuthSize, "%s:%s", SPTF_CLIENT_ID, SPTF_CLIENT_SECRET);
-
-    char requestHeaders[768];
-    snprintf(requestHeaders, sizeof(requestHeaders),
-             "POST /api/token HTTP/1.1\r\n"
-             "Host: accounts.spotify.com\r\n"
-             "Authorization: Basic %s\r\n"
-             "Content-Length: %d\r\n"
-             "Content-Type: application/x-www-form-urlencoded\r\n"
-             "Connection: close\r\n\r\n",
-             b64Encode(basicAuth).c_str(), strlen(requestContent)
-    );
-
-    HTTP_response_t response = httpRequest("accounts.spotify.com", 443, requestHeaders, requestContent);
-
-    if (response.httpCode == 200) {
-
-        DynamicJsonDocument json(572);
-        DeserializationError error = deserializeJson(json, response.payload);
-        if (!error) {
-            access_token = json["access_token"].as<String>();
-            if (access_token != "") {
-                token_lifetime_ms = (json["expires_in"].as<uint32_t>() - 300) * 1000;
-                token_millis = millis();
-                success = true;
-                if (json.containsKey("refresh_token")) {
-                    refresh_token = json["refresh_token"].as<String>();
-                    writeRefreshToken();
-                }
-            }
-        } else {
-            if( response.payload.indexOf("Invalid refresh token") != -1 )
-            {
-                log_i("  [%d] Invalid refresh token, clearing and restarting\n", ts);
-                access_token = "";
-                refresh_token = "";
-                deleteRefreshToken();
-                sptfAction = Idle;
-                ESP.restart();
-                while (true) {
-                    yield();
-                }
-            }
-            else
-            {
-                log_v("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
-                eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
-            }
-        }
-    } else {
-        log_v("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
-        eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
-    }
-
-    if (success) {
-        sptfAction = CurrentlyPlaying;
-    }
-
-    getting_token = false;
-}
-
-
-/**
- * Get information about the Spotify user's current playback
- */
-void sptfCurrentlyPlaying() {
-    uint32_t ts = micros();
-    log_v("> [%d] sptfCurrentlyPlaying()", ts);
-
-    last_curplay_millis = millis();
-    next_curplay_millis = 0;
-
-    HTTP_response_t response = sptfApiRequest("GET", "/currently-playing");
-
-    if (response.httpCode == 200) {
-        TrackDetails track = TrackDetails::PopulateFromCurrentlyPlaying(response);
-        sptf_is_playing = track.IsPlaying;
-        // Check if current song is about to end
-        if (sptf_is_playing) {
-            uint32_t remaining_ms = track.DurationMS - track.ProgressMS;
-            if (remaining_ms < SPTF_POLLING_DELAY && remaining_ms > 0) {
-                // Refresh at the end of current song,
-                // without considering remaining polling delay
-                next_curplay_millis = millis() + remaining_ms + 200;
-            }
-        }
-        BaseDisplayManager.showTrack(track);
-    } else if (response.httpCode == 204) {
-        // No content
-    } else {
-        log_v("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
-        eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
-    }
-}
-
-/**
- * Spotify next track
- */
-void sptfNext() {
-    HTTP_response_t response = sptfApiRequest("POST", "/next");
-    if (response.httpCode == 204) {
-        next_curplay_millis = millis() + 200;
-    } else {
-        eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
-    }
-    sptfAction = CurrentlyPlaying;
-};
-
-
-/**
- * Spotify previous track
- */
-void sptfPrevious() {
-    HTTP_response_t response = sptfApiRequest("POST", "/previous");
-    if (response.httpCode == 204) {
-        next_curplay_millis = millis() + 200;
-    } else {
-        eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
-    }
-    sptfAction = CurrentlyPlaying;
-};
-
-
-/**
- * Spotify toggle pause/play
- */
-void sptfToggle() {
-    HTTP_response_t response = sptfApiRequest("PUT", sptf_is_playing ? "/pause" : "/play");
-    if (response.httpCode == 204) {
-        sptf_is_playing = !sptf_is_playing;
-        next_curplay_millis = millis() + 200;
-    } else {
-        eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
-    }
-    sptfAction = CurrentlyPlaying;
-};
 
 /**
  * Display bytes in a pretty format

@@ -14,4 +14,5 @@ struct TrackDetails
     uint32_t    DurationMS = 0;
 
     static TrackDetails PopulateFromCurrentlyPlaying( HTTP_response_t response );
+    static TrackDetails PopulateFromRecentlyPlayed( HTTP_response_t response );
 };

@@ -3,6 +3,7 @@
 
 #include <limits>
 
+#include "SpotifyController.h"
 #include "DisplayManager.h"
 #include "TrackDetails.h"
 
@@ -121,31 +122,41 @@ void LayoutItem_ProgressBar::draw( DisplayManager& displayManager, const TrackDe
     displayManager.fillRect(Location, 0);
     displayManager.drawRect(Location.shrinkBy(2,2), 15);
     displayManager.fillRect(Location.shrinkBy(2,2).scaleBy(val,1), 15);
-    displayManager.M5EPD_flushAndUpdateArea(Location, UPDATE_MODE_DU);    
+//    displayManager.M5EPD_flushAndUpdateArea(Location, UPDATE_MODE_DU);    
 }
 
-LayoutItem_Button::LayoutItem_Button( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdAction action )
+LayoutItem_Button::LayoutItem_Button( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdAction action, bool activeOnly )
 : LayoutItem(rect,action)
 , Data(data), DataSize(size)
 {
+    DrawOnActiveDeviceChanged = activeOnly;
+    HideIfNoActiveDevice = activeOnly;
 }
 
 void LayoutItem_Button::draw( DisplayManager& displayManager, const TrackDetails& track )
 {
-    drawIcon(displayManager.GetCanvas(),Data,DataSize,Location.left,Location.top);
+    if( HideIfNoActiveDevice && !SpotifyController::HasActiveDevice )
+        displayManager.fillRect(Location,0);
+    else
+        drawIcon(displayManager.GetCanvas(),Data,DataSize,Location.left,Location.top);
 }
 
-LayoutItem_ButtonWithHighlight::LayoutItem_ButtonWithHighlight( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdHighlightFunc func, tdAction action )
-: LayoutItem_Button(rect,data,size,action)
+LayoutItem_ButtonWithHighlight::LayoutItem_ButtonWithHighlight( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdHighlightFunc func, tdAction action, bool activeOnly )
+: LayoutItem_Button(rect,data,size,action,activeOnly)
 , HighlightFunc(func)
 {
 }
 
 void LayoutItem_ButtonWithHighlight::draw( DisplayManager& displayManager, const TrackDetails& track )
 {
-    drawIcon(displayManager.GetCanvas(),Data,DataSize,Location.left,Location.top);
-    if( HighlightFunc && HighlightFunc() )
-        displayManager.drawRect(Location,15);
+    if( HideIfNoActiveDevice && !SpotifyController::HasActiveDevice )
+        displayManager.fillRect(Location,0);
+    else
+    {
+        drawIcon(displayManager.GetCanvas(),Data,DataSize,Location.left,Location.top);
+        if( HighlightFunc && HighlightFunc() )
+            displayManager.drawRect(Location,15);
+    }
 }
 
 LayoutItem_StaticText::LayoutItem_StaticText( Rect<uint16_t> rect, const GFXfont* font, LayoutItemWithFont::eAlign align, String text, tdAction action )

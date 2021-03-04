@@ -46,6 +46,8 @@ public:
     Rect<uint16_t>   Location;
     tdAction    Action;
     bool        DrawOnlyOnNewTrack = true;
+    bool        DrawOnActiveDeviceChanged = false;
+    bool        HideIfNoActiveDevice = false;
 
     virtual void draw( DisplayManager&, const TrackDetails& ) = 0;
     virtual bool hitTest( const Point<uint16_t>& );
@@ -118,7 +120,7 @@ public:
 class LayoutItem_Button : public LayoutItem
 {
 public:
-    LayoutItem_Button( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdAction action = nullptr );
+    LayoutItem_Button( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdAction action = nullptr, bool activeOnly = false );
 
     const unsigned char* Data = nullptr;
     size_t  DataSize = 0;
@@ -129,7 +131,7 @@ class LayoutItem_ButtonWithHighlight : public LayoutItem_Button
 {
 public:
     using tdHighlightFunc = std::function<bool(void)>;
-    LayoutItem_ButtonWithHighlight( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdHighlightFunc func = nullptr, tdAction action = nullptr );
+    LayoutItem_ButtonWithHighlight( Rect<uint16_t> rect, const unsigned char* data, size_t size, tdHighlightFunc func = nullptr, tdAction action = nullptr, bool activeOnly = false );
 
     tdHighlightFunc HighlightFunc;
     virtual void draw( DisplayManager&, const TrackDetails& ) override;

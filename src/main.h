@@ -78,14 +78,6 @@ typedef struct {
     String payload;
 } HTTP_response_t;
 
-enum SptfActions {
-    Idle, GetToken, CurrentlyPlaying, Next, Previous, Toggle
-};
-
-enum GrantTypes {
-    gt_authorization_code, gt_refresh_token
-};
-
 enum EventsLogTypes {
     log_line, log_raw
 };
@@ -105,16 +97,6 @@ void eventsSendInfo(const char *msg, const char* payload = "");
 void eventsSendError(int code, const char *msg, const char *payload = "");
 
 HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers, const char *content = "");
-HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const char *content = "");
-void sptfGetToken(const String &code, GrantTypes grant_type = gt_refresh_token);
-void sptfCurrentlyPlaying();
-void sptfNext();
-void sptfPrevious();
-void sptfToggle();
-
-void writeRefreshToken();
-void deleteRefreshToken();
-String readRefreshToken();
 
 void handleGesture();
 void IRAM_ATTR interruptRoutine();

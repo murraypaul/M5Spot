@@ -65,10 +65,10 @@ void DisplayManager::SetLayout( eLayout layout )
             uint16_t margin = 540 + 18;
             uint8_t spacing = 16;
             uint8_t size = 64;
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); }), true) );
             LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 540-120},{size, size}}, icons8_automatic_64_4bpp_bmp, sizeof(icons8_automatic_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShowSettingsMenu(); })) );
         }
         break;
@@ -87,10 +87,10 @@ void DisplayManager::SetLayout( eLayout layout )
             uint16_t margin = 300 + 46;
             uint8_t spacing = 32;
             uint8_t size = 64;
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); }), true) );
             LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 300 - 64},{size, size}}, icons8_automatic_64_4bpp_bmp, sizeof(icons8_automatic_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShowSettingsMenu(); })) );
         }
         break;
@@ -109,10 +109,10 @@ void DisplayManager::SetLayout( eLayout layout )
             uint16_t margin = 46;
             uint8_t spacing = 32;
             uint8_t size = 64;
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); })) );
-            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); })) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_prev_64_4bpp_bmp, sizeof(icons8_prev_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayPreviousTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_first_64_4bpp_bmp, sizeof(icons8_first_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::RestartCurrentTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_resume_64_4bpp_bmp, sizeof(icons8_resume_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayOrPauseCurrentTrack(); }), true) );
+            LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_right_button_64_4bpp_bmp, sizeof(icons8_right_button_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([](){ SpotifyController::PlayNextTrack(); }), true) );
             LayoutItems.push_back( std::make_shared<LayoutItem_Button>(Rect<uint16_t>{{margin + (iButton++)*(size+spacing), 840},{size, size}}, icons8_automatic_64_4bpp_bmp, sizeof(icons8_automatic_64_4bpp_bmp), std::make_shared<LayoutItemAction_StdFunction>([this](){ this->ShowSettingsMenu(); })) );
         }
         break;
@@ -194,7 +194,7 @@ void DisplayManager::SetLayout( eLayout layout )
 void DisplayManager::drawJpgUrl( String url, const Rect<uint16_t>& rect )
 {
     Canvas.drawJpgUrl(url.c_str(), rect.left, rect.top, rect.width(), rect.height(), 0, 0, JPEG_DIV_NONE);
-    M5EPD_flushAndUpdateArea(rect, UPDATE_MODE_GC16);
+//    M5EPD_flushAndUpdateArea(rect, UPDATE_MODE_GC16);
 }
 
 void DisplayManager::drawJpgUrlScaled( String url, const Size<uint16_t>& sourceSize, const Rect<uint16_t>& targetRect )
@@ -240,7 +240,7 @@ void DisplayManager::drawJpgUrlScaled( String url, const Size<uint16_t>& sourceS
     }
     log_d("Finished scaled copy");
     
-    M5EPD_flushAndUpdateArea(targetRect, UPDATE_MODE_GC16);
+//    M5EPD_flushAndUpdateArea(targetRect, UPDATE_MODE_GC16);
 }
 
 void DisplayManager::drawString( const GFXfont* font, uint8_t datum, String str, const Rect<uint16_t>& rect )
@@ -268,17 +268,31 @@ void DisplayManager::drawString( const GFXfont* font, uint8_t datum, String str,
     Canvas.drawString(str, x, y);
 }
 
-void DisplayManager::showTrack( const TrackDetails& track ) 
+bool DisplayManager::showTrack( const TrackDetails& track ) 
 {
+    DesiredUpdateRect = Rect<uint16_t>{0,0,0,0};
+    DesiredUpdateMode = UPDATE_MODE_NONE;
+
     bool bNewTrack = CurrentTrack.ID != track.ID;
     if( bNewTrack )
         clearScreen();
+    bool bActiveDeviceChanged = false;
+    bool bOldActive = SpotifyController::HasActiveDevice;
+    if( !SpotifyController::IsPlaying || !bOldActive )
+    {
+        SpotifyController::UpdateActiveDevice();
+        if( SpotifyController::HasActiveDevice != bOldActive )
+            bActiveDeviceChanged = true;
+    }
+    if( !bNewTrack && !bActiveDeviceChanged && !SpotifyController::IsPlaying )
+        return false;
+
     Rect<uint16_t> redrawRect{0,0,0,0};
     for( auto& item : LayoutItems )
     {
         if( !item.get( ))
             continue;
-        if( bNewTrack || !item->DrawOnlyOnNewTrack )
+        if( bNewTrack || !item->DrawOnlyOnNewTrack || (bActiveDeviceChanged && item->DrawOnActiveDeviceChanged) )
         {
             item->draw( *this, track );
             if( redrawRect.width() == 0 )
@@ -287,12 +301,23 @@ void DisplayManager::showTrack( const TrackDetails& track )
                 redrawRect = redrawRect.outersect(item->Location);
         }
     }
+//    log_i("Redraw rect = (%d,%d,%d,%d)",redrawRect.left,redrawRect.top,redrawRect.right,redrawRect.bottom);
     if( bNewTrack )
-        refreshScreen(UPDATE_MODE_GC16);
+    {
+//        log_i("New track");
+        DesiredUpdateRect = Rect<uint16_t>(CanvasPos,CanvasSize);
+        DesiredUpdateMode = UPDATE_MODE_GC16;
+    }
     else if( redrawRect.width() > 0 )
-        M5EPD_flushAndUpdateArea(redrawRect, UPDATE_MODE_DU);
+    {
+//        log_i("Have redraw rect");
+        DesiredUpdateRect = redrawRect;
+        DesiredUpdateMode = UPDATE_MODE_DU4;
+    }
 
     CurrentTrack = track;
+
+    return true;
 }
 
 void DisplayManager::redraw()
@@ -330,24 +355,23 @@ void DisplayManager::M5EPD_flushAndUpdateArea( const Rect<uint16_t>& rect, m5epd
     M5.EPD.UpdateArea(rect.left, rect.top, rect.width(), rect.height(),updateMode);
 } 
 
-SptfActions DisplayManager::doLoop( SptfActions sptfAction, bool enableButtons )
+void DisplayManager::doLoop( bool enableButtons )
 {
+    SpotifyController::GetTokenIfNeeded();
+
     // M5Stack handler
     M5.update();
     if (enableButtons && M5.BtnL.wasPressed()) {
         log_i("BtnL - Previous");
-        sptfAction = HandleButtonL();
-//        sptfAction = Previous;
+        HandleButtonL();
     }
     else if (enableButtons && M5.BtnP.wasPressed()) {
         log_i("BtnP - Toggle");
-        sptfAction = HandleButtonP();
-//        sptfAction = Toggle;
+        HandleButtonP();
     }
     else if (enableButtons && M5.BtnR.wasPressed()) {
         log_i("BtnR - Next");
-        sptfAction = HandleButtonR();
-//        sptfAction = Next;
+        HandleButtonR();
     }
     else if( M5.TP.avaliable() )
     {
@@ -375,20 +399,41 @@ SptfActions DisplayManager::doLoop( SptfActions sptfAction, bool enableButtons )
                 //          HandleDoubleFinger( f1.first, f1.second, f2.first, f2.second );
                         break;
                         case 1:
-                        sptfAction = HandleSingleFinger( f1 );
+                            HandleSingleFinger( f1 );
                         break;
                     }
                 }
             }
         }
     }
-    return sptfAction;
+
+    SpotifyController::UpdateFromCurrentlyPlayingIfNeeded();
+    if( DesiredUpdateMode != UPDATE_MODE_NONE )
+    {
+//        log_i("Delayed update");
+        M5.EPD.WritePartGram4bpp(CanvasPos.x, CanvasPos.y, CanvasSize.cx, CanvasSize.cy, (uint8_t*)Canvas.frameBuffer());
+        if( !PopupDialogActive )
+        {
+//            log_i("Delayed update - no popup");
+            M5.EPD.UpdateArea(CanvasPos.x, CanvasPos.y, CanvasSize.cx, CanvasSize.cy, DesiredUpdateMode);
+            DesiredUpdateMode = UPDATE_MODE_NONE;
+        }
+    }
+    if( this != &BaseDisplayManager && BaseDisplayManager.DesiredUpdateMode != UPDATE_MODE_NONE )
+    {
+//        log_i("Delayed update - not base");
+        M5.EPD.WritePartGram4bpp(BaseDisplayManager.CanvasPos.x, BaseDisplayManager.CanvasPos.y, BaseDisplayManager.CanvasSize.cx, BaseDisplayManager.CanvasSize.cy, (uint8_t*)BaseDisplayManager.Canvas.frameBuffer());
+        M5.EPD.WritePartGram4bpp(CanvasPos.x, CanvasPos.y, CanvasSize.cx, CanvasSize.cy, (uint8_t*)Canvas.frameBuffer());
+        Rect<uint16_t> updateRect = Rect<uint16_t>{CanvasPos,CanvasSize}.outersect(BaseDisplayManager.DesiredUpdateRect);        
+        M5.EPD.UpdateArea(updateRect.left, updateRect.top, updateRect.right, updateRect.bottom, BaseDisplayManager.DesiredUpdateMode);
+        BaseDisplayManager.DesiredUpdateMode = UPDATE_MODE_NONE;
+    }
 }
 
-SptfActions DisplayManager::HandleButtonL() { SpotifyController::PlayPreviousTrack(); return SptfActions::CurrentlyPlaying; };
-SptfActions DisplayManager::HandleButtonP() { SpotifyController::PlayOrPauseCurrentTrack(); return SptfActions::CurrentlyPlaying; };
-SptfActions DisplayManager::HandleButtonR() { SpotifyController::PlayNextTrack(); return SptfActions::CurrentlyPlaying; };
-SptfActions DisplayManager::HandleSingleFinger( const Point<uint16_t>& hitIn )
+void DisplayManager::HandleButtonL() { SpotifyController::PlayPreviousTrack(); };
+void DisplayManager::HandleButtonP() { SpotifyController::PlayOrPauseCurrentTrack(); };
+void DisplayManager::HandleButtonR() { SpotifyController::PlayNextTrack(); };
+void DisplayManager::HandleSingleFinger( const Point<uint16_t>& hitIn )
 {
     Point<uint16_t> hit = hitIn - CanvasPos;
     log_d("Converted hit from (%d,%d) to (%d,%d), canvas pos (%d,%d)"
@@ -396,7 +441,6 @@ SptfActions DisplayManager::HandleSingleFinger( const Point<uint16_t>& hitIn )
     for( auto& item : LayoutItems )
         if( item->hitTest(hit) )
             break;
-    return SptfActions::CurrentlyPlaying;
 }
 
 void DisplayManager::ShowSettingsMenu()
@@ -408,11 +452,12 @@ void DisplayManager::ShowSettingsMenu()
     settingsManager.redraw();
     settingsManager.ShouldClose = false;
 
+    PopupDialogActive = true;
     while( !settingsManager.ShouldClose )
     {
-        settingsManager.doLoop(SptfActions::CurrentlyPlaying,false);
+        settingsManager.doLoop(false);
         delay(100);
-        yield();
+//        yield();
     }
 
     preferences.begin(Preferences_App);
@@ -424,4 +469,5 @@ void DisplayManager::ShowSettingsMenu()
     settingsManager.clearScreen();
     settingsManager.Canvas.pushCanvas(settingsManager.CanvasPos.x,settingsManager.CanvasPos.y,UPDATE_MODE_GC16);
     Canvas.pushCanvas(CanvasPos.x,CanvasPos.y,UPDATE_MODE_GC16);
+    PopupDialogActive = false;
 }

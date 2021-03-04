@@ -30,6 +30,9 @@ protected:
     bool ShouldClose = false;
     M5EPD_Canvas TempJpegCanvas;
     String  CurrentCachedJpegURL;
+    bool PopupDialogActive = false;
+    Rect<uint16_t>   DesiredUpdateRect{0,0,0,0};
+    m5epd_update_mode_t     DesiredUpdateMode = UPDATE_MODE_NONE;
 
 public:
     uint16_t MaxPreferredImageSize = 0;
@@ -38,7 +41,7 @@ public:
     void Init( bool appInit = false );
     void SetLayout( eLayout );
 
-    void showTrack( const TrackDetails& track );
+    bool showTrack( const TrackDetails& track );
     void redraw();
 
     M5EPD_Canvas&   GetCanvas();
@@ -55,12 +58,12 @@ public:
 
     void drawProgressBar( float val );
 
-    SptfActions doLoop( SptfActions sptfAction, bool enableButtons = true );
+    void doLoop( bool enableButtons = true );
 
-    SptfActions HandleButtonL();
-    SptfActions HandleButtonP();
-    SptfActions HandleButtonR();
-    SptfActions HandleSingleFinger( const Point<uint16_t>& hit );
+    void HandleButtonL();
+    void HandleButtonP();
+    void HandleButtonR();
+    void HandleSingleFinger( const Point<uint16_t>& hit );
 
     void ShowSettingsMenu();
 };
