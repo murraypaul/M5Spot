@@ -10,8 +10,10 @@ public:
     static TrackDetails CurrentTrack;
     static bool IsPlaying;
     static bool HasActiveDevice;
+    static String LastActiveDeviceID;
     static void UpdateActiveDevice();
-
+    static void ActivateLastDeviceIfNeeded();
+    
     static bool UpdateFromCurrentlyPlayingIfNeeded();
     static bool UpdateFromCurrentlyPlaying();
 

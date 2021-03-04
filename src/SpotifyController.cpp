@@ -9,6 +9,7 @@
 TrackDetails SpotifyController::CurrentTrack;
 bool SpotifyController::IsPlaying = false;
 bool SpotifyController::HasActiveDevice = false;
+String SpotifyController::LastActiveDeviceID = "";
 bool SpotifyController::GettingToken = false;
 String SpotifyController::access_token;
 String SpotifyController::refresh_token; 
@@ -241,6 +242,7 @@ bool SpotifyController::UpdateFromCurrentlyPlaying() {
  * Spotify next track
  */
 void SpotifyController::PlayNextTrack() {
+    ActivateLastDeviceIfNeeded();
     HTTP_response_t response = ApiRequest("POST", "/next");
     if (response.httpCode == 204) {
         next_curplay_millis = millis() + 200;
@@ -254,6 +256,7 @@ void SpotifyController::PlayNextTrack() {
  * Spotify previous track
  */
 void SpotifyController::PlayPreviousTrack() {
+    ActivateLastDeviceIfNeeded();
     HTTP_response_t response = ApiRequest("POST", "/previous");
     if (response.httpCode == 204) {
         next_curplay_millis = millis() + 200;
@@ -268,6 +271,7 @@ void SpotifyController::PlayPreviousTrack() {
  */
 void SpotifyController::PlayOrPauseCurrentTrack()
 {
+    ActivateLastDeviceIfNeeded();
     HTTP_response_t response = ApiRequest("PUT", IsPlaying ? "/pause" : "/play");
     if (response.httpCode == 204) {
         IsPlaying = !IsPlaying;
@@ -279,6 +283,7 @@ void SpotifyController::PlayOrPauseCurrentTrack()
 
 void SpotifyController::RestartCurrentTrack()
 {
+    ActivateLastDeviceIfNeeded();
     HTTP_response_t response = ApiRequest("PUT", "/seek?position_ms=0");
     if (response.httpCode == 204) {
         next_curplay_millis = millis() + 200;
@@ -323,7 +328,27 @@ void SpotifyController::UpdateActiveDevice()
         {
             for( const auto& item : json["devices"].as<JsonArray>() )
                 if( item["is_active"] )
+                {
                     HasActiveDevice = true;
+                    LastActiveDeviceID = item["id"].as<String>();
+                }
         }
+    }
+}
+
+void SpotifyController::ActivateLastDeviceIfNeeded()
+{
+    if( HasActiveDevice )
+        return;
+    if( LastActiveDeviceID == "" )
+        return;
+
+    char data[1000];
+    snprintf(data,sizeof(data),"{\"device_ids\":[\"%s\"]}", LastActiveDeviceID.c_str());
+    HTTP_response_t response = ApiRequest("PUT", "",data);
+    if (response.httpCode != 204) 
+    {
+        log_i("Error trying to activate last device (%s): %d, %s. Message was '%s'", LastActiveDeviceID.c_str(), response.httpCode, response.payload.c_str(), data);
+        LastActiveDeviceID = "";
     }
 }

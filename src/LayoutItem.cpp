@@ -135,7 +135,7 @@ LayoutItem_Button::LayoutItem_Button( Rect<uint16_t> rect, const unsigned char* 
 
 void LayoutItem_Button::draw( DisplayManager& displayManager, const TrackDetails& track )
 {
-    if( HideIfNoActiveDevice && !SpotifyController::HasActiveDevice )
+    if( HideIfNoActiveDevice && !SpotifyController::HasActiveDevice && SpotifyController::LastActiveDeviceID == "" )
         displayManager.fillRect(Location,0);
     else
         drawIcon(displayManager.GetCanvas(),Data,DataSize,Location.left,Location.top);
@@ -149,7 +149,7 @@ LayoutItem_ButtonWithHighlight::LayoutItem_ButtonWithHighlight( Rect<uint16_t> r
 
 void LayoutItem_ButtonWithHighlight::draw( DisplayManager& displayManager, const TrackDetails& track )
 {
-    if( HideIfNoActiveDevice && !SpotifyController::HasActiveDevice )
+    if( HideIfNoActiveDevice && !SpotifyController::HasActiveDevice && SpotifyController::LastActiveDeviceID == "" )
         displayManager.fillRect(Location,0);
     else
     {
