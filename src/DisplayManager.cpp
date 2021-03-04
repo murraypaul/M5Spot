@@ -276,13 +276,14 @@ bool DisplayManager::showTrack( const TrackDetails& track )
     bool bNewTrack = CurrentTrack.ID != track.ID;
     if( bNewTrack )
         clearScreen();
-    bool bActiveDeviceChanged = false;
+    bool bActiveDeviceChanged = SpotifyController::LastActiveDeviceCleared;
     bool bOldActive = SpotifyController::HasActiveDevice;
     if( !SpotifyController::IsPlaying || !bOldActive )
     {
         SpotifyController::UpdateActiveDevice();
         if( SpotifyController::HasActiveDevice != bOldActive )
             bActiveDeviceChanged = true;
+        SpotifyController::LastActiveDeviceCleared = false;
     }
     if( !bNewTrack && !bActiveDeviceChanged && !SpotifyController::IsPlaying )
         return false;
@@ -402,6 +403,7 @@ void DisplayManager::doLoop( bool enableButtons )
                             HandleSingleFinger( f1 );
                         break;
                     }
+                    delay(200);
                 }
             }
         }

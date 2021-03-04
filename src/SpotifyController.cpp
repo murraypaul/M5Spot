@@ -10,6 +10,7 @@ TrackDetails SpotifyController::CurrentTrack;
 bool SpotifyController::IsPlaying = false;
 bool SpotifyController::HasActiveDevice = false;
 String SpotifyController::LastActiveDeviceID = "";
+bool SpotifyController::LastActiveDeviceCleared = true;
 bool SpotifyController::GettingToken = false;
 String SpotifyController::access_token;
 String SpotifyController::refresh_token; 
@@ -168,7 +169,7 @@ void SpotifyController::GetToken(const String &code, GrantTypes grant_type) {
  */
 HTTP_response_t SpotifyController::ApiRequest(const char *method, const char *endpoint, const char *content) {
     uint32_t ts = micros();
-    log_v("> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
+    log_d("> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
 
     char headers[512];
     snprintf(headers, sizeof(headers),
@@ -202,10 +203,14 @@ bool SpotifyController::UpdateFromCurrentlyPlayingIfNeeded()
  */
 bool SpotifyController::UpdateFromCurrentlyPlaying() {
     uint32_t ts = micros();
-    log_v("> [%d] sptfCurrentlyPlaying()", ts);
+//    log_d("> [%d,%d] sptfCurrentlyPlaying()", ts, last_curplay_millis, next_curplay_millis);
 
-    last_curplay_millis = millis();
-    next_curplay_millis = 0;
+    auto ms = millis();
+    if( ms < next_curplay_millis )
+        return false;
+
+    last_curplay_millis = ms;
+    next_curplay_millis = last_curplay_millis + SPTF_POLLING_DELAY;
 
     HTTP_response_t response = ApiRequest("GET", "/currently-playing");
 
@@ -225,6 +230,7 @@ bool SpotifyController::UpdateFromCurrentlyPlaying() {
     } else if (response.httpCode == 204) {
         // Fallback to last played track
         response = ApiRequest("GET", "/recently-played?limit=1");
+        next_curplay_millis = last_curplay_millis + SPTF_POLLING_DELAY_NOT_PLAYING;
 
         if (response.httpCode == 200) {
             TrackDetails track = TrackDetails::PopulateFromRecentlyPlayed(response);
@@ -236,6 +242,7 @@ bool SpotifyController::UpdateFromCurrentlyPlaying() {
             eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
         }
     }
+    return false;
 }
 
 /**
@@ -350,5 +357,6 @@ void SpotifyController::ActivateLastDeviceIfNeeded()
     {
         log_i("Error trying to activate last device (%s): %d, %s. Message was '%s'", LastActiveDeviceID.c_str(), response.httpCode, response.payload.c_str(), data);
         LastActiveDeviceID = "";
+        LastActiveDeviceCleared = true;
     }
 }
