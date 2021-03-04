@@ -209,8 +209,9 @@ bool SpotifyController::UpdateFromCurrentlyPlaying() {
     if( ms < next_curplay_millis )
         return false;
 
+    uint16_t delayToAdd = (IsPlaying || HasActiveDevice) ? SPTF_POLLING_DELAY : SPTF_POLLING_DELAY_NOT_ACTIVE;
     last_curplay_millis = ms;
-    next_curplay_millis = last_curplay_millis + SPTF_POLLING_DELAY;
+    next_curplay_millis = last_curplay_millis + delayToAdd;
 
     HTTP_response_t response = ApiRequest("GET", "/currently-playing");
 
@@ -230,8 +231,7 @@ bool SpotifyController::UpdateFromCurrentlyPlaying() {
     } else if (response.httpCode == 204) {
         // Fallback to last played track
         response = ApiRequest("GET", "/recently-played?limit=1");
-        next_curplay_millis = last_curplay_millis + SPTF_POLLING_DELAY_NOT_PLAYING;
-
+ 
         if (response.httpCode == 200) {
             TrackDetails track = TrackDetails::PopulateFromRecentlyPlayed(response);
             IsPlaying = false;
