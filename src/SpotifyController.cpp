@@ -11,6 +11,7 @@ bool SpotifyController::IsPlaying = false;
 bool SpotifyController::HasActiveDevice = false;
 String SpotifyController::LastActiveDeviceID = "";
 bool SpotifyController::LastActiveDeviceCleared = true;
+uint32_t SpotifyController::LastActiveDeviceMillis = millis();
 bool SpotifyController::GettingToken = false;
 String SpotifyController::access_token;
 String SpotifyController::refresh_token; 
@@ -338,6 +339,7 @@ void SpotifyController::UpdateActiveDevice()
                 {
                     HasActiveDevice = true;
                     LastActiveDeviceID = item["id"].as<String>();
+                    LastActiveDeviceMillis = millis();
                 }
         }
     }
@@ -359,4 +361,6 @@ void SpotifyController::ActivateLastDeviceIfNeeded()
         LastActiveDeviceID = "";
         LastActiveDeviceCleared = true;
     }
+    else
+        UpdateActiveDevice();
 }

@@ -66,6 +66,9 @@ public:
     void HandleSingleFinger( const Point<uint16_t>& hit );
 
     void ShowSettingsMenu();
+
+    void doShutdownIfOnBattery();
+    void doShutdown();
 };
 
 extern DisplayManager BaseDisplayManager;

@@ -11,6 +11,7 @@ public:
     static bool IsPlaying;
     static bool HasActiveDevice;
     static String LastActiveDeviceID;
+    static uint32_t LastActiveDeviceMillis;
     static bool LastActiveDeviceCleared;
     static void UpdateActiveDevice();
     static void ActivateLastDeviceIfNeeded();

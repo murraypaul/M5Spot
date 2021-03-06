@@ -212,7 +212,7 @@ void setup() {
 //        Canvas.setFreeFont(&FreeSans9pt7b);
 //        Canvas.drawString("Ready...", 160, 230);
 
-        BaseDisplayManager.clearScreen();
+        BaseDisplayManager.clearScreen();       
     }
     BaseDisplayManager.refreshScreen();
 }
@@ -230,6 +230,13 @@ void loop() {
     }    
     if (!WiFi.isConnected()) 
         return;
+
+    static bool bFirstLoop = true;
+    if( bFirstLoop )
+    {
+        SpotifyController::UpdateActiveDevice();
+        bFirstLoop = false;
+    }
 
     // Refreh Spotify access token either on M5Spot startup or at token expiration delay
     // The number of requests is limited to 1 every 5 seconds

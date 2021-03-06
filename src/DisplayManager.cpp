@@ -1,4 +1,5 @@
 #include "main.h"
+#include "config.h"
 #include "DisplayManager.h"
 
 #include "LayoutItem.h"
@@ -34,6 +35,7 @@ void DisplayManager::Init( bool appInit )
         Rotation = preferences.getShort("Rotation",(int16_t)Rotation);
         MaxPreferredImageSize = preferences.getShort("MaxJpeg",(int16_t)MaxPreferredImageSize);
         preferences.end();
+        log_d("Battery voltage: %d", M5.getBatteryVoltage());
     }
 
     SetLayout(CurrentLayout);
@@ -358,42 +360,53 @@ void DisplayManager::M5EPD_flushAndUpdateArea( const Rect<uint16_t>& rect, m5epd
 
 void DisplayManager::doLoop( bool enableButtons )
 {
+    if( !SpotifyController::HasActiveDevice 
+     && SpotifyController::LastActiveDeviceMillis > 0 
+     && millis() > SpotifyController::LastActiveDeviceMillis + SPTF_SHUTDOWN_AFTER_INACTIVE )
+    {
+        doShutdownIfOnBattery();
+    }
+
     SpotifyController::GetTokenIfNeeded();
 
-    // M5Stack handler
+    // Prevent repeated press detection
+    static bool wasFingerDown = false;
+    static bool wasButtonPressed = false;
+
     M5.update();
-    if (enableButtons && M5.BtnL.wasPressed()) {
+    if (enableButtons && !wasButtonPressed && M5.BtnL.wasPressed()) {
         log_i("BtnL - Previous");
+        wasButtonPressed = true;
         HandleButtonL();
     }
-    else if (enableButtons && M5.BtnP.wasPressed()) {
+    else if (enableButtons && !wasButtonPressed && M5.BtnP.wasPressed()) {
         log_i("BtnP - Toggle");
+        wasButtonPressed = true;
         HandleButtonP();
     }
-    else if (enableButtons && M5.BtnR.wasPressed()) {
+    else if (enableButtons && !wasButtonPressed && M5.BtnR.wasPressed()) {
         log_i("BtnR - Next");
+        wasButtonPressed = true;
         HandleButtonR();
     }
-    else if( M5.TP.avaliable() )
+    else
     {
-        // Prevent repeated press detection
-        static uint32_t lastFingerDown = 0;
-        if( !M5.TP.isFingerUp() )
+        if( enableButtons )
+            wasButtonPressed = false;
+        if( M5.TP.avaliable() )
         {
-            M5.TP.update();
-            Point<uint16_t> f1 = {M5.TP.readFingerX(0), M5.TP.readFingerY(0)};
-            Point<uint16_t> f2 = {M5.TP.readFingerX(1), M5.TP.readFingerY(1)};
-            auto numFingers = M5.TP.getFingerNum();
-//            delay(100);
-            M5.TP.flush();
-            // Get spurious touches at startup
-            if( f1 != Point<uint16_t>(0,0) )
+            if( !M5.TP.isFingerUp() )
             {
-                auto currentmillis = millis();
-                if( currentmillis - lastFingerDown > 500 || currentmillis < lastFingerDown )
+                M5.TP.update();
+                Point<uint16_t> f1 = {M5.TP.readFingerX(0), M5.TP.readFingerY(0)};
+                Point<uint16_t> f2 = {M5.TP.readFingerX(1), M5.TP.readFingerY(1)};
+                auto numFingers = M5.TP.getFingerNum();
+    //            delay(100);
+                M5.TP.flush();
+                // Get spurious touches at startup
+                if( f1 != Point<uint16_t>(0,0) && !wasFingerDown )
                 {
-                    log_d("Finger down at (%d,%d), time %d vs last time %d",f1.x,f1.y,currentmillis,lastFingerDown);
-                    lastFingerDown = currentmillis;
+                    wasFingerDown = true;
                     switch( numFingers )
                     {
                         case 2:
@@ -405,8 +418,10 @@ void DisplayManager::doLoop( bool enableButtons )
                     }
                     delay(200);
                 }
-            }
-        }
+            } else
+                wasFingerDown = false;
+        } else
+            wasFingerDown = false;
     }
 
     SpotifyController::UpdateFromCurrentlyPlayingIfNeeded();
@@ -472,4 +487,46 @@ void DisplayManager::ShowSettingsMenu()
     settingsManager.Canvas.pushCanvas(settingsManager.CanvasPos.x,settingsManager.CanvasPos.y,UPDATE_MODE_GC16);
     Canvas.pushCanvas(CanvasPos.x,CanvasPos.y,UPDATE_MODE_GC16);
     PopupDialogActive = false;
+}
+
+void DisplayManager::doShutdownIfOnBattery()
+{
+    // Cannot tell for sure, guess
+    uint32_t bv = M5.getBatteryVoltage();
+    log_d("Battery voltage %d vs target of 4200",bv);
+    if( bv < 4200 )
+        doShutdown();
+}
+
+void DisplayManager::doShutdown()
+{
+    Point<uint16_t> windowPoint;
+    if( Rotation % 180 == 0 )
+        windowPoint = {280,70};
+    else
+        windowPoint = {70,280};
+    Rect<uint16_t> windowRect = {windowPoint,{400,400}};
+
+    M5EPD_Canvas tempCanvas(&M5.EPD);
+    tempCanvas.createCanvas(windowRect.width(),windowRect.height());
+
+    tempCanvas.fillRect(0,0,windowRect.width(),windowRect.height(),0);
+    tempCanvas.drawRect(0,0,windowRect.width(),windowRect.height(),15);
+    tempCanvas.drawRect(5,5,windowRect.width()-10,windowRect.height()-10,15);
+
+    tempCanvas.setTextDatum(TC_DATUM);
+    tempCanvas.setFreeFont(&FreeSansBold24pt7b);
+    tempCanvas.drawString("Shutdown",windowRect.width()/2,50);
+    tempCanvas.setFreeFont(&FreeSansBold18pt7b);
+    tempCanvas.drawString("Hold side button",windowRect.width()/2,200);
+    tempCanvas.drawString("to restart",windowRect.width()/2,240);
+
+    tempCanvas.pushCanvas(windowPoint.x,windowPoint.y,UPDATE_MODE_GC16);
+    
+    log_d("About to disable main power");
+    delay(200);
+    M5.disableMainPower();
+
+    while( true )
+        yield();
 }
