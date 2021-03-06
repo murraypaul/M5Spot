@@ -7,9 +7,11 @@ A Spotify Web API client for M5Paper
 - Easy OAuth2 authorization through browser
 
 ### Prerequisite
-- Create an App in [Spotify Developper Dashboard](https://developer.spotify.com/dashboard/) and declare http://m5spot.local/callback/ as the Redirect URI
+- Create an App in [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/) and declare http://m5spot.local/callback/ as the Redirect URI
 - Rename `config.h.SAMPLE` to `config.h` and complete the settings
-- Install external libraries (ESP Async WebServer, ArduinoJson)
-- Compile and upload `src`
+- Install external libraries
+  - ArduinoJson
+  - https://github.com/me-no-dev/ESPAsyncWebServer
+- Compile and upload using Arduino IDE
 
  
