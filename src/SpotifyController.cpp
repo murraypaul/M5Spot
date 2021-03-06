@@ -308,7 +308,7 @@ bool SpotifyController::AuthoriseIfNeeded(AsyncWebServerRequest *request)
         snprintf(auth_url, sizeof(auth_url),
                     "https://accounts.spotify.com/authorize/"
                     "?response_type=code"
-                    "&scope=user-read-private+user-read-currently-playing+user-read-recently-played&user-read-playback-state+user-modify-playback-state"
+                    "&scope=user-read-private+user-read-currently-playing+user-read-recently-played+user-read-playback-state+user-modify-playback-state"
                     "&redirect_uri=http%%3A%%2F%%2Fm5spot.local%%2Fcallback%%2F"
                     "&client_id=%s",
                     SPTF_CLIENT_ID
