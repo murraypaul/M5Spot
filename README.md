@@ -11,6 +11,7 @@ A Spotify Web API client for M5Paper
 - Rename `config.h.SAMPLE` to `config.h` and complete the settings
 - Install external libraries
   - ArduinoJson
+  - https://github.com/me-no-dev/AsyncTCP
   - https://github.com/me-no-dev/ESPAsyncWebServer
 - Compile and upload using Arduino IDE
 
