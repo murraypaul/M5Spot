@@ -213,9 +213,11 @@ void setup() {
 //        Canvas.drawString("Ready...", 160, 230);
 
         BaseDisplayManager.clearScreen();       
+        BaseDisplayManager.drawString(&FreeSans24pt7b, TC_DATUM, "Please wait...", 200, 200);
     }
     BaseDisplayManager.refreshScreen();
 }
+
 
 /**
  * Main loop
